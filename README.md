@@ -107,7 +107,6 @@ bind = $mainMod, D, exec, xhisper
 ```
 </details>
 
-
 <details>
 <summary>Gnome</summary>
 
@@ -126,8 +125,6 @@ gsettings set $media_keys custom-keybindings "$new_bindings"
 gsettings set $custom_kbd:$kbd_path name "$name"
 gsettings set $custom_kbd:$kbd_path binding "$binding"
 gsettings set $custom_kbd:$kbd_path command "$action"
-
-
 ```
 </details>
 
