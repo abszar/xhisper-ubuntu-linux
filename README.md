@@ -4,51 +4,36 @@
   <br><br>
 </div>
 
-Dictation at cursor for Linux.
+Voice-to-text dictation at cursor for Ubuntu. Fork of [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with keyboard layout compatibility, translation support, and clipboard manager integration.
 
-## Installation
+## What's different in this fork
 
-### Dependencies
+- **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout without needing a secondary QWERTY layout
+- **English language forced** — Whisper transcription is locked to English to prevent language misdetection
+- **Translate to French** — Say "translate this ..." and the rest of your speech will be translated to French via Groq LLM before being pasted
+- **xclip fix** — Clipboard detection for X11 works correctly (xclip commands stored as variables instead of shell functions)
+- **Clipboard manager cleanup** — Automatically removes xhisper's temporary clipboard entries from CopyQ history
 
-<details>
-<summary>Arch Linux / Manjaro</summary>
-<pre><code>sudo pacman -S pipewire jq curl ffmpeg gcc</code></pre>
-</details>
+---
 
-<details>
-<summary>Debian / Ubuntu / Linux Mint</summary>
-<pre><code>sudo apt update
-sudo apt install pipewire jq curl ffmpeg gcc</code></pre>
-</details>
+## Installation on Ubuntu
 
-<details>
-<summary>Fedora / RHEL / AlmaLinux / Rocky</summary>
-<pre><code>sudo dnf install -y pipewire pipewire-utils jq curl ffmpeg gcc</code></pre>
-</details>
+### 1. Install dependencies
 
-<details>
-<summary>OpenSUSE (Leap / Tumbleweed)</summary>
-<pre><code>sudo zypper refresh
-sudo zypper install pipewire jq curl ffmpeg gcc</code></pre>
-</details>
+```sh
+sudo apt update
+sudo apt install pipewire jq curl ffmpeg gcc xclip
+```
 
-<details>
-<summary>Void Linux</summary>
-<pre><code>sudo xbps-install -S
-sudo xbps-install pipewire jq curl ffmpeg gcc</code></pre>
-</details>
+### 2. Add user to input group
 
-**Note:** `wl-clipboard` (Wayland) or `xclip` (X11) required for non-ASCII but usually pre-installed.
-
-### Setup
-
-1. **Add user to input group** to access `/dev/uinput`:
 ```sh
 sudo usermod -aG input $USER
 ```
+
 Then **log out and log back in** (restart is safer) for the group change to take effect.
 
-Check by running:
+Verify by running:
 
 ```sh
 groups
@@ -56,103 +41,70 @@ groups
 
 You should see `input` in the output.
 
-2. **Get a Groq API key** from [console.groq.com](https://console.groq.com) (free tier available) and add to `~/.env`:
+### 3. Set up uinput permissions
+
 ```sh
-GROQ_API_KEY=<your_API_key>
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger /dev/uinput
 ```
 
-3. Clone the repository and install:
+### 4. Get a Groq API key
+
+Get a free API key from [console.groq.com](https://console.groq.com) and add it to `~/.env`:
+
 ```sh
-git clone --depth 1 https://github.com/imaginalnika/xhisper.git
+echo 'GROQ_API_KEY=<your_API_key>' >> ~/.env
+```
+
+### 5. Clone, build, and install
+
+```sh
+git clone --depth 1 https://github.com/abszar/xhisper.git
 cd xhisper && make
 sudo make install
 ```
 
-4. Bind `xhisper` binary to your favorite key:
+### 6. Set up a keyboard shortcut (GNOME)
 
-<details>
-<summary>keyd</summary>
-
-```ini
-[main]
-capslock = layer(dictate)
-
-[dictate:C]
-d = macro(xhisper)
-```
-</details>
-
-<details>
-<summary>sxhkd</summary>
-
-```
-super + d
-    xhisper
-```
-</details>
-
-<details>
-<summary>i3 / sway</summary>
-
-```
-bindsym $mod+d exec xhisper
-```
-</details>
-
-<details>
-<summary>Hyprland</summary>
-
-```
-bind = $mainMod, D, exec, xhisper
-```
-</details>
-
-<details>
-<summary>Gnome</summary>
+Run the following in a terminal to bind xhisper to a key. Change `binding` to your preferred shortcut:
 
 ```sh
-# In your terminal:
-
 name="xhisper"
-binding="<CTRL><SHIFT>X"
+binding="Pause"  # Pause/Break key. Other examples: "<Alt>d", "<CTRL><SHIFT>X"
 action="/usr/local/bin/xhisper"
 
 media_keys=org.gnome.settings-daemon.plugins.media-keys
 custom_kbd=org.gnome.settings-daemon.plugins.media-keys.custom-keybinding
 kbd_path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/$name/
-new_bindings=`gsettings get $media_keys custom-keybindings | sed -e"s>'\]>','$kbd_path']>"| sed -e"s>@as \[\]>['$kbd_path']>"`
+new_bindings=$(gsettings get $media_keys custom-keybindings | sed -e"s>'\]>','$kbd_path']>" | sed -e"s>@as \[\]>['$kbd_path']>")
 gsettings set $media_keys custom-keybindings "$new_bindings"
 gsettings set $custom_kbd:$kbd_path name "$name"
 gsettings set $custom_kbd:$kbd_path binding "$binding"
 gsettings set $custom_kbd:$kbd_path command "$action"
 ```
-</details>
 
 ---
 
 ## Usage
 
-Simply run `xhisper` twice (via your favorite keybinding):
-- **First run**: Starts recording
-- **Second run**: Stops and transcribes
+Press your shortcut key **twice**:
+- **First press**: Starts recording (you'll see `(recording...)` at cursor)
+- **Second press**: Stops recording, transcribes, and pastes the text at cursor
 
-The transcription will be typed at your cursor position.
+### Translate to French
 
-**View logs:**
+Start your dictation with **"translate this"** followed by what you want translated:
+
+> "Translate this I would like to schedule a meeting for tomorrow"
+
+Result pasted: `Je voudrais planifier une réunion pour demain`
+
+### View logs
+
 ```sh
 xhisper --log
 ```
-
-**Non-QWERTY layouts:**
-
-For non-QWERTY layouts (e.g. Dvorak, International), set up an input switch key to QWERTY (e.g. rightalt). Then instead of binding to `xhisper`, bind to:
-```sh
-xhisper --<your-input-switch-key>
-```
-
-**Available input switch keys:** `--leftalt`, `--rightalt`, `--leftctrl`, `--rightctrl`, `--leftshift`, `--rightshift`, `--super`
-
-Key chords (like ctrl-space) not available yet.
 
 ---
 
@@ -165,14 +117,18 @@ mkdir -p ~/.config/xhisper
 cp default_xhisperrc ~/.config/xhisper/xhisperrc
 ```
 
+---
+
 ## Troubleshooting
 
-**Terminal Applications**: Clipboard paste uses Ctrl+V, which doesn't work in terminal emulators (they require Ctrl+Shift+V). Temporary workaround is to remap Ctrl+V to paste in your terminal emulator's settings. Note that *this limitation only affects international/Unicode characters*. ASCII characters (a-z, A-Z, 0-9, punctuation) are typed directly and doesn't care whether terminal or not.
+**No sound detected**: Check that your microphone is working and PipeWire is running (`pw-record --channels=1 test.wav`).
 
-**Non-ASCII Transcription**: Increase non-ascii-*-delay to give the transcription longer timing buffer.
+**Permission denied on /dev/uinput**: Make sure you completed step 3 (udev rules) and that you're in the `input` group.
+
+**Wrong text pasted**: If xhisper pastes old clipboard content instead of the transcription, make sure `xclip` is installed (`sudo apt install xclip`).
 
 ---
 
 <p align="center">
-  <em>Low complexity dictation for Linux</em>
+  <em>Voice dictation for Ubuntu with AZERTY support and French translation</em>
 </p>

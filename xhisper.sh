@@ -215,6 +215,30 @@ transcribe() {
   echo "$transcription"
 }
 
+
+translate_to_french() {
+  local raw_text="$1"
+  local logging_start=$(date +%s%N)
+
+  local translated=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions"     -H "Authorization: Bearer $GROQ_API_KEY"     -H "Content-Type: application/json"     -d "$(jq -n --arg text "$raw_text" '{
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: "You are a translator. Translate the following text to French. Output ONLY the translated text, nothing else. Do not add quotes around the output."
+        },
+        {
+          role: "user",
+          content: $text
+        }
+      ],
+      temperature: 0.3
+    }')"     | jq -r '.choices[0].message.content')
+
+  logging_end_and_write_to_logfile "Translation" "$translated" "$logging_start"
+
+  echo "$translated"
+}
 # Main
 
 # Find recording process, if so then kill
@@ -234,6 +258,14 @@ if pgrep -f "$PROCESS_PATTERN" > /dev/null; then
   paste "(transcribing...)"
   TRANSCRIPTION=$(transcribe "$RECORDING")
   delete_n_chars 17 # "(transcribing...)"
+
+  # Check if transcription starts with "translate this"
+  if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
+    TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
+    paste "(translating...)"
+    TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE")
+    delete_n_chars 16 # "(translating...)"
+  fi
 
   paste "$TRANSCRIPTION"
 
