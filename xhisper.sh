@@ -218,14 +218,25 @@ transcribe() {
 
 translate_to_french() {
   local raw_text="$1"
+  local formality="$2"  # "casual" (default) or "formal"
   local logging_start=$(date +%s%N)
 
-  local translated=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions"     -H "Authorization: Bearer $GROQ_API_KEY"     -H "Content-Type: application/json"     -d "$(jq -n --arg text "$raw_text" '{
+  local style_instruction
+  if [ "$formality" = "formal" ]; then
+    style_instruction="Use formal French (vous)."
+  else
+    style_instruction="Use casual/informal French (tu)."
+  fi
+
+  local translated=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions" \
+    -H "Authorization: Bearer $GROQ_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg text "$raw_text" --arg style "$style_instruction" '{
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: "You are a translator. Translate the following text to French. Output ONLY the translated text, nothing else. Do not add quotes around the output."
+          content: ("You are a translator. Translate the following text to French. " + $style + " Output ONLY the translated text, nothing else. Do not add quotes around the output.")
         },
         {
           role: "user",
@@ -233,7 +244,8 @@ translate_to_french() {
         }
       ],
       temperature: 0.3
-    }')"     | jq -r '.choices[0].message.content')
+    }')" \
+    | jq -r '.choices[0].message.content')
 
   logging_end_and_write_to_logfile "Translation" "$translated" "$logging_start"
 
@@ -263,9 +275,15 @@ if pgrep -f "$PROCESS_PATTERN" > /dev/null; then
 
   # Check if transcription starts with "translate this"
   if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
-    TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
+    FORMALITY="casual"
+    if echo "$TRANSCRIPTION" | grep -iq "^translate this official"; then
+      FORMALITY="formal"
+      TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this official[,.]? *//i')
+    else
+      TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
+    fi
     paste "(translating...)"
-    TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE")
+    TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE" "$FORMALITY")
     delete_n_chars 16 # "(translating...)"
   fi
 
