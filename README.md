@@ -12,7 +12,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 - **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, and translating (falls back to desktop notifications if GTK is unavailable)
 - **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
-- **Translate to French** — Say "translate this ..." and the rest of your speech will be translated to French via Groq LLM. Casual (tu) by default, say "translate this official ..." for formal (vous)
+- **Voice-triggered translation** — Say "translate this ..." to translate to your default language, or "translate this to Spanish ..." for any language. Add "official" for formal register
 - **Stability** — PID-file based concurrency control prevents duplicate instances from interfering with each other
 - **Clipboard preservation** — Your clipboard content is saved before transcription and restored after pasting
 - **Clipboard manager cleanup** — Automatically removes xhisper's temporary clipboard entries from CopyQ history
@@ -98,19 +98,23 @@ An animated wave pill overlay slides up from the bottom of your screen showing t
 - **Transcribing** — gentler pulse while Whisper processes your audio
 - **Done** — brief confirmation, then fades out
 
-### Translate to French
+### Translation
 
-Start your dictation with **"translate this"** followed by what you want translated. By default it uses **casual French (tu)**:
+Start your dictation with **"translate this"** to translate to your default language (set in config, defaults to French):
 
-> "Translate this how are you doing"
+> "Translate this how are you doing" → `Comment tu vas ?`
 
-Result: `Comment tu vas ?`
+Specify a target language with **"translate this to \<language\>"**:
 
-For **formal French (vous)**, say **"translate this official"**:
+> "Translate this to Spanish how are you doing" → `¿Cómo estás?`
 
-> "Translate this official how are you doing"
+> "Translate this to German how are you doing" → `Wie geht es dir?`
 
-Result: `Comment allez-vous ?`
+Add **"official"** for formal register:
+
+> "Translate this official how are you doing" → `Comment allez-vous ?`
+
+> "Translate this to Japanese official thank you very much" → `誠にありがとうございます`
 
 ### View logs
 
@@ -144,5 +148,5 @@ cp default_xhisperrc ~/.config/xhisper/xhisperrc
 ---
 
 <p align="center">
-  <em>Push-to-talk voice dictation for Ubuntu with AZERTY support and French translation</em>
+  <em>Push-to-talk voice dictation for Ubuntu with AZERTY support and multi-language translation</em>
 </p>

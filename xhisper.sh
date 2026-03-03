@@ -79,6 +79,7 @@ silence_threshold=-50
 silence_percentage=95
 non_ascii_initial_delay=0.1
 non_ascii_default_delay=0.025
+target_language="French"
 
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/xhisper/xhisperrc"
 
@@ -95,6 +96,7 @@ if [ -f "$CONFIG_FILE" ]; then
       silence-percentage) silence_percentage="$value" ;;
       non-ascii-initial-delay) non_ascii_initial_delay="$value" ;;
       non-ascii-default-delay) non_ascii_default_delay="$value" ;;
+      target-language) target_language="$value" ;;
     esac
   done < "$CONFIG_FILE"
 fi
@@ -213,27 +215,28 @@ transcribe() {
   echo "$transcription"
 }
 
-translate_to_french() {
+translate_text() {
   local raw_text="$1"
   local formality="$2"
+  local lang="$3"
   local logging_start=$(date +%s%N)
 
   local style_instruction
   if [ "$formality" = "formal" ]; then
-    style_instruction="Use formal French (vous)."
+    style_instruction="Use formal/polite register."
   else
-    style_instruction="Use casual/informal French (tu)."
+    style_instruction="Use casual/informal register."
   fi
 
   local translated=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions" \
     -H "Authorization: Bearer $GROQ_API_KEY" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg text "$raw_text" --arg style "$style_instruction" '{
+    -d "$(jq -n --arg text "$raw_text" --arg style "$style_instruction" --arg lang "$lang" '{
       model: "llama-3.3-70b-versatile",
       messages: [
         {
           role: "system",
-          content: ("You are a translator. Translate the following text to French. " + $style + " Output ONLY the translated text, nothing else. Do not add quotes around the output.")
+          content: ("You are a translator. Translate the following text to " + $lang + ". " + $style + " Output ONLY the translated text, nothing else. Do not add quotes around the output.")
         },
         {
           role: "user",
@@ -346,15 +349,22 @@ show_status transcribing
 TRANSCRIPTION=$(transcribe "$RECORDING")
 # Check if transcription starts with "translate this"
 if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
+  TARGET_LANG="$target_language"
   FORMALITY="casual"
-  if echo "$TRANSCRIPTION" | grep -iq "^translate this official"; then
+  # Strip "translate this" prefix
+  TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
+  # Check for "to <language>" and extract it
+  if echo "$TEXT_TO_TRANSLATE" | grep -iqE "^to [a-z]+"; then
+    TARGET_LANG=$(echo "$TEXT_TO_TRANSLATE" | sed -E 's/^[Tt]o ([A-Za-z]+).*/\1/')
+    TEXT_TO_TRANSLATE=$(echo "$TEXT_TO_TRANSLATE" | sed -E 's/^[Tt]o [A-Za-z]+[,.]? *//i')
+  fi
+  # Check for "official" (formal register)
+  if echo "$TEXT_TO_TRANSLATE" | grep -iq "^official"; then
     FORMALITY="formal"
-    TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this official[,.]? *//i')
-  else
-    TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
+    TEXT_TO_TRANSLATE=$(echo "$TEXT_TO_TRANSLATE" | sed -E 's/^[Oo]fficial[,.]? *//i')
   fi
   show_status translating
-  TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE" "$FORMALITY")
+  TRANSCRIPTION=$(translate_text "$TEXT_TO_TRANSLATE" "$FORMALITY" "$TARGET_LANG")
 fi
 
 paste "$TRANSCRIPTION"

@@ -14,3 +14,6 @@ non-ascii-default-delay : 0.025
 silence-threshold  : -50
 silence-percentage : 95
 
+# Translation:
+target-language : French
+
