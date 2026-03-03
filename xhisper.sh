@@ -123,8 +123,8 @@ if command -v wl-copy &> /dev/null; then
     CLIP_COPY="wl-copy"
     CLIP_PASTE="wl-paste"
 elif command -v xclip &> /dev/null; then
-    CLIP_COPY() { xclip -selection clipboard; }
-    CLIP_PASTE() { xclip -o -selection clipboard; }
+    CLIP_COPY="xclip -selection clipboard"
+    CLIP_PASTE="xclip -o -selection clipboard"
 else
     echo "Error: No clipboard tool found. Install wl-clipboard or xclip." >&2
     exit 1
@@ -139,23 +139,15 @@ press_wrap_key() {
 paste() {
   local text="$1"
   press_wrap_key
-  # Type character by character
-  # Use xhispertool type for ASCII (32-126), clipboard+paste for Unicode
-  for ((i=0; i<${#text}; i++)); do
-    local char="${text:$i:1}"
-    local ascii=$(printf '%d' "'$char")
-
-    if [[ $ascii -ge 32 && $ascii -le 126 ]]; then
-      # ASCII printable character - use direct key typing (faster)
-      "$XHISPERTOOL" type "$char"
-    else
-      # Unicode or special character - use clipboard
-      echo -n "$char" | $CLIP_COPY
-      "$XHISPERTOOL" paste
-      # On first character (more error-prone), sleep longer
-      [ "$i" -eq 0 ] && sleep "$non_ascii_initial_delay" || sleep "$non_ascii_default_delay"
-    fi
-  done
+  # Use clipboard paste for all text (layout-independent, works with AZERTY etc.)
+  echo -n "$text" | $CLIP_COPY
+  sleep 0.05
+  "$XHISPERTOOL" paste
+  sleep 0.05
+  # Clean this entry from CopyQ clipboard history
+  if command -v copyq &> /dev/null; then
+    copyq remove 0 &>/dev/null &
+  fi
   press_wrap_key
 }
 
@@ -214,6 +206,7 @@ transcribe() {
     -H "Content-Type: multipart/form-data" \
     -F "file=@$recording" \
     -F "model=$model" \
+    -F "language=en" \
     -F "prompt=$transcription_prompt" \
     | jq -r '.text' | sed 's/^ //') # Transcription always returns a leading space, so remove it via sed
 
