@@ -1,22 +1,14 @@
 #!/bin/bash
 
-# xhisper v1.0
+# xhisper v1.2 - Push-to-talk
 # Dictate anywhere in Linux. Transcription at your cursor.
-# - Transcription via Groq Whisper
-
-# Configuration (see default_xhisperrc or ~/.config/xhisper/xhisperrc):
-# - long-recording-threshold : threshold for using large vs turbo model (seconds)
-# - transcription-prompt : context words for better Whisper accuracy
-# - silence-threshold : max volume in dB to consider silent (e.g., -50)
-# - silence-percentage : percentage of recording that must be silent (e.g., 95)
-# - non-ascii-initial-delay : sleep after first non-ASCII paste (seconds)
-# - non-ascii-default-delay : sleep after subsequent non-ASCII pastes (seconds)
+# Hold your shortcut key to record, release to transcribe.
 
 # Requirements:
 # - pipewire, pipewire-utils (audio)
 # - wl-clipboard (Wayland) or xclip (X11) for clipboard
 # - jq, curl, ffmpeg (processing)
-# - make to build, sudo make install to install
+# - python3 with libX11 (for key release detection)
 
 [ -f "$HOME/.env" ] && source "$HOME/.env"
 
@@ -63,7 +55,20 @@ fi
 
 RECORDING="/tmp/xhisper.wav"
 LOGFILE="/tmp/xhisper.log"
+PIDFILE="/tmp/xhisper.pid"
 PROCESS_PATTERN="pw-record.*$RECORDING"
+
+# Prevent concurrent execution with PID file
+if [ -f "$PIDFILE" ]; then
+  OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    # Another instance is still running, ignore this press
+    exit 0
+  fi
+  # Stale PID file, remove it
+  rm -f "$PIDFILE"
+fi
+echo $$ > "$PIDFILE"
 
 # Default configuration
 long_recording_threshold=1000
@@ -77,14 +82,10 @@ CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/xhisper/xhisperrc"
 
 if [ -f "$CONFIG_FILE" ]; then
   while IFS=: read -r key value || [ -n "$key" ]; do
-    # Skip comments and empty lines
     [[ "$key" =~ ^[[:space:]]*# ]] && continue
     [[ -z "$key" ]] && continue
-
-    # Trim whitespace and quotes
     key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
-
     case "$key" in
       long-recording-threshold) long_recording_threshold="$value" ;;
       transcription-prompt) transcription_prompt="$value" ;;
@@ -99,12 +100,9 @@ fi
 # Auto-start daemon if not running
 if ! pgrep -x xhispertoold > /dev/null; then
     "$XHISPERTOOLD" 2>> /tmp/xhispertoold.log &
-    sleep 1  # Give daemon time to start
-
-    # Verify daemon started successfully
+    sleep 1
     if ! pgrep -x xhispertoold > /dev/null; then
         echo "Error: Failed to start xhispertoold daemon" >&2
-        echo "Check /tmp/xhispertoold.log for details" >&2
         exit 1
     fi
 fi
@@ -112,9 +110,6 @@ fi
 # Check if xhispertool is available
 if ! command -v "$XHISPERTOOL" &> /dev/null; then
     echo "Error: xhispertool not found" >&2
-    echo "Please either:" >&2
-    echo "  - Run 'sudo make install' to install system-wide" >&2
-    echo "  - Run 'xhisper --local' from the build directory" >&2
     exit 1
 fi
 
@@ -126,7 +121,7 @@ elif command -v xclip &> /dev/null; then
     CLIP_COPY="xclip -selection clipboard"
     CLIP_PASTE="xclip -o -selection clipboard"
 else
-    echo "Error: No clipboard tool found. Install wl-clipboard or xclip." >&2
+    echo "Error: No clipboard tool found." >&2
     exit 1
 fi
 
@@ -139,12 +134,10 @@ press_wrap_key() {
 paste() {
   local text="$1"
   press_wrap_key
-  # Use clipboard paste for all text (layout-independent, works with AZERTY etc.)
   echo -n "$text" | $CLIP_COPY
   sleep 0.05
   "$XHISPERTOOL" paste
   sleep 0.05
-  # Clean this entry from CopyQ clipboard history
   if command -v copyq &> /dev/null; then
     copyq remove 0 &>/dev/null &
   fi
@@ -165,18 +158,12 @@ get_duration() {
 
 is_silent() {
   local recording="$1"
-
-  # Use ffmpeg volumedetect to get mean and max volume
   local vol_stats=$(ffmpeg -i "$recording" -af "volumedetect" -f null /dev/null 2>&1 | grep -E "mean_volume|max_volume")
   local max_vol=$(echo "$vol_stats" | grep "max_volume" | awk '{print $5}')
-
-  # If max volume is below threshold, consider it silent
-  # Note: ffmpeg reports in dB, negative values (e.g., -50 dB is quiet)
   if [ -n "$max_vol" ]; then
     local is_quiet=$(echo "$max_vol < $silence_threshold" | bc -l)
     [ "$is_quiet" -eq 1 ] && return 0
   fi
-
   return 1
 }
 
@@ -184,10 +171,8 @@ logging_end_and_write_to_logfile() {
   local title="$1"
   local result="$2"
   local logging_start="$3"
-
   local logging_end=$(date +%s%N)
   local time=$(echo "scale=3; ($logging_end - $logging_start) / 1000000000" | bc)
-
   echo "=== $title ===" >> "$LOGFILE"
   echo "Result: [$result]" >> "$LOGFILE"
   echo "Time: ${time}s" >> "$LOGFILE"
@@ -196,8 +181,6 @@ logging_end_and_write_to_logfile() {
 transcribe() {
   local recording="$1"
   local logging_start=$(date +%s%N)
-
-  # Use large model for longer recordings, turbo for short ones
   local is_long_recording=$(echo "$(get_duration "$recording") > $long_recording_threshold" | bc -l)
   local model=$([[ $is_long_recording -eq 1 ]] && echo "whisper-large-v3" || echo "whisper-large-v3-turbo")
 
@@ -208,17 +191,15 @@ transcribe() {
     -F "model=$model" \
     -F "language=en" \
     -F "prompt=$transcription_prompt" \
-    | jq -r '.text' | sed 's/^ //') # Transcription always returns a leading space, so remove it via sed
+    | jq -r '.text' | sed 's/^ //')
 
   logging_end_and_write_to_logfile "Transcription" "$transcription" "$logging_start"
-
   echo "$transcription"
 }
 
-
 translate_to_french() {
   local raw_text="$1"
-  local formality="$2"  # "casual" (default) or "formal"
+  local formality="$2"
   local logging_start=$(date +%s%N)
 
   local style_instruction
@@ -248,64 +229,126 @@ translate_to_french() {
     | jq -r '.choices[0].message.content')
 
   logging_end_and_write_to_logfile "Translation" "$translated" "$logging_start"
-
   echo "$translated"
 }
-# Main
 
-# Find recording process, if so then kill
-if pgrep -f "$PROCESS_PATTERN" > /dev/null; then
-  # Save clipboard before xhisper modifies it
-  SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
-  pkill -f "$PROCESS_PATTERN"; sleep 0.2 # Buffer for flush
-  delete_n_chars 14 # "(recording...)"
+# Wait for all keys to be released (push-to-talk detection)
+wait_for_key_release() {
+  python3 << 'PYEOF'
+from ctypes import cdll, c_char
+import time
 
-  # Check if recording is silent
-  if is_silent "$RECORDING"; then
-    paste "(no sound detected)"
-    sleep 0.6
-    delete_n_chars 19 # "(no sound detected)"
-    rm -f "$RECORDING"
-    exit 0
-  fi
+X11 = cdll.LoadLibrary("libX11.so.6")
+display = X11.XOpenDisplay(None)
+if not display:
+    exit(0)
 
-  paste "(transcribing...)"
-  TRANSCRIPTION=$(transcribe "$RECORDING")
-  delete_n_chars 17 # "(transcribing...)"
+keys_start = (c_char * 32)()
+keys_check = (c_char * 32)()
 
-  # Check if transcription starts with "translate this"
-  if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
-    FORMALITY="casual"
-    if echo "$TRANSCRIPTION" | grep -iq "^translate this official"; then
-      FORMALITY="formal"
-      TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this official[,.]? *//i')
-    else
-      TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
-    fi
-    paste "(translating...)"
-    TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE" "$FORMALITY")
-    delete_n_chars 16 # "(translating...)"
-  fi
+# Capture which keys are currently pressed
+time.sleep(0.05)
+X11.XQueryKeymap(display, keys_start)
 
-  paste "$TRANSCRIPTION"
+# Find pressed keycodes
+pressed = set()
+for i in range(32):
+    b = keys_start[i] if isinstance(keys_start[i], int) else ord(keys_start[i])
+    for bit in range(8):
+        if b & (1 << bit):
+            pressed.add(i * 8 + bit)
 
-  # Restore original clipboard
-  sleep 0.1
+if not pressed:
+    X11.XCloseDisplay(display)
+    exit(0)
+
+# Wait until all originally pressed keys are released
+while True:
+    time.sleep(0.05)
+    X11.XQueryKeymap(display, keys_check)
+    still_pressed = False
+    for kc in pressed:
+        byte_idx = kc // 8
+        bit_idx = kc % 8
+        b = keys_check[byte_idx] if isinstance(keys_check[byte_idx], int) else ord(keys_check[byte_idx])
+        if b & (1 << bit_idx):
+            still_pressed = True
+            break
+    if not still_pressed:
+        break
+
+X11.XCloseDisplay(display)
+PYEOF
+}
+
+# Cleanup
+CLEANED_UP=0
+cleanup() {
+  [ "$CLEANED_UP" -eq 1 ] && return
+  CLEANED_UP=1
+  pkill -f "$PROCESS_PATTERN" 2>/dev/null
+  rm -f "$RECORDING" "$PIDFILE"
   if [ -n "$SAVED_CLIPBOARD" ]; then
     echo -n "$SAVED_CLIPBOARD" | $CLIP_COPY
   fi
+}
+trap cleanup EXIT INT TERM
 
+# Main — Push-to-talk flow
+
+# Small delay to let GNOME finish processing the shortcut key
+sleep 0.3
+
+# Start recording in background
+rm -f "$RECORDING"
+pw-record --channels=1 --rate=16000 "$RECORDING" &
+PW_PID=$!
+
+# Show recording notification
+notify-send -a xhisper -i audio-input-microphone "xhisper" "Recording..." -t 30000 &
+
+# Wait for key release
+wait_for_key_release
+
+# Stop recording
+kill $PW_PID 2>/dev/null
+wait $PW_PID 2>/dev/null
+sleep 0.2
+
+# Save clipboard for paste phase
+SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
+
+# Check if recording is silent
+if is_silent "$RECORDING"; then
+  notify-send -a xhisper -i dialog-warning "xhisper" "No sound detected" -t 2000
   rm -f "$RECORDING"
-else
-  # No recording running, so start
-  # Save clipboard before pasting status text
-  SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
-  sleep 0.2
-  paste "(recording...)"
-  # Restore original clipboard while recording
-  sleep 0.1
-  if [ -n "$SAVED_CLIPBOARD" ]; then
-    echo -n "$SAVED_CLIPBOARD" | $CLIP_COPY
-  fi
-  pw-record --channels=1 --rate=16000 "$RECORDING"
+  exit 0
 fi
+
+notify-send -a xhisper -i audio-input-microphone "xhisper" "Transcribing..." -t 30000
+TRANSCRIPTION=$(transcribe "$RECORDING")
+# Check if transcription starts with "translate this"
+if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
+  FORMALITY="casual"
+  if echo "$TRANSCRIPTION" | grep -iq "^translate this official"; then
+    FORMALITY="formal"
+    TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this official[,.]? *//i')
+  else
+    TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
+  fi
+  notify-send -a xhisper -i audio-input-microphone "xhisper" "Translating..." -t 30000
+  TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE" "$FORMALITY")
+fi
+
+paste "$TRANSCRIPTION"
+
+# Close any lingering notifications
+notify-send -a xhisper -i dialog-information "xhisper" "Done" -t 1000
+
+# Restore original clipboard
+sleep 0.1
+if [ -n "$SAVED_CLIPBOARD" ]; then
+  echo -n "$SAVED_CLIPBOARD" | $CLIP_COPY
+fi
+
+rm -f "$RECORDING"

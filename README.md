@@ -4,14 +4,17 @@
   <br><br>
 </div>
 
-Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with keyboard layout compatibility, translation support, and clipboard manager integration.
+Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, desktop notifications, keyboard layout compatibility, translation support, and clipboard manager integration.
 
 ## Features
 
-- **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout without needing a secondary QWERTY layout
+- **Push-to-talk** — Hold your shortcut key to record, release to transcribe. No double-press needed
+- **Desktop notifications** — Recording, transcribing, and translating states shown as GNOME notifications instead of pasted text at cursor
+- **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
-- **Translate to French** — Say "translate this ..." and the rest of your speech will be translated to French via Groq LLM before being pasted
-- **xclip fix** — Clipboard detection for X11 works correctly (xclip commands stored as variables instead of shell functions)
+- **Translate to French** — Say "translate this ..." and the rest of your speech will be translated to French via Groq LLM. Casual (tu) by default, say "translate this official ..." for formal (vous)
+- **Stability** — PID-file based concurrency control prevents duplicate instances from interfering with each other
+- **Clipboard preservation** — Your clipboard content is saved before transcription and restored after pasting
 - **Clipboard manager cleanup** — Automatically removes xhisper's temporary clipboard entries from CopyQ history
 
 ---
@@ -22,7 +25,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 
 ```sh
 sudo apt update
-sudo apt install pipewire jq curl ffmpeg gcc xclip
+sudo apt install pipewire jq curl ffmpeg gcc xclip python3 bc
 ```
 
 ### 2. Add user to input group
@@ -88,9 +91,12 @@ gsettings set $custom_kbd:$kbd_path command "$action"
 
 ## Usage
 
-Press your shortcut key **twice**:
-- **First press**: Starts recording (you'll see `(recording...)` at cursor)
-- **Second press**: Stops recording, transcribes, and pastes the text at cursor
+**Hold** your shortcut key to record, **release** to stop and transcribe. The transcribed text is pasted at your cursor.
+
+Desktop notifications show the current state:
+- **Recording...** — while you hold the key
+- **Transcribing...** — after you release, while Whisper processes your audio
+- **Done** — text has been pasted
 
 ### Translate to French
 
@@ -133,8 +139,10 @@ cp default_xhisperrc ~/.config/xhisper/xhisperrc
 
 **Wrong text pasted**: If xhisper pastes old clipboard content instead of the transcription, make sure `xclip` is installed (`sudo apt install xclip`).
 
+**Notifications not showing**: Make sure `notify-send` is available (`sudo apt install libnotify-bin`).
+
 ---
 
 <p align="center">
-  <em>Voice dictation for Ubuntu with AZERTY support and French translation</em>
+  <em>Push-to-talk voice dictation for Ubuntu with AZERTY support and French translation</em>
 </p>
