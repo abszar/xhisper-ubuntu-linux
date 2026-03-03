@@ -48,9 +48,11 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   XHISPERTOOL="$SCRIPT_DIR/xhispertool"
   XHISPERTOOLD="$SCRIPT_DIR/xhispertoold"
+  XHISPER_NOTIFY="$SCRIPT_DIR/xhisper-notify"
 else
   XHISPERTOOL="xhispertool"
   XHISPERTOOLD="xhispertoold"
+  XHISPER_NOTIFY="xhisper-notify"
 fi
 
 RECORDING="/tmp/xhisper.wav"
@@ -144,11 +146,25 @@ paste() {
   press_wrap_key
 }
 
-delete_n_chars() {
-  local n="$1"
-  for ((i=0; i<n; i++)); do
-    "$XHISPERTOOL" backspace
-  done
+# Status overlay (animated wave pill, falls back to notify-send)
+show_status() {
+  if command -v "$XHISPER_NOTIFY" &> /dev/null; then
+    "$XHISPER_NOTIFY" "$@" &
+  else
+    case "$1" in
+      recording)    notify-send -a xhisper "xhisper" "Recording..." -t 30000 ;;
+      transcribing) notify-send -a xhisper "xhisper" "Transcribing..." -t 30000 ;;
+      translating)  notify-send -a xhisper "xhisper" "Translating..." -t 30000 ;;
+      done)         notify-send -a xhisper "xhisper" "Done" -t 1000 ;;
+      silent)       notify-send -a xhisper "xhisper" "No sound detected" -t 2000 ;;
+    esac
+  fi
+}
+
+hide_status() {
+  if command -v "$XHISPER_NOTIFY" &> /dev/null; then
+    "$XHISPER_NOTIFY" hide 2>/dev/null
+  fi
 }
 
 get_duration() {
@@ -287,6 +303,7 @@ cleanup() {
   [ "$CLEANED_UP" -eq 1 ] && return
   CLEANED_UP=1
   pkill -f "$PROCESS_PATTERN" 2>/dev/null
+  hide_status
   rm -f "$RECORDING" "$PIDFILE"
   if [ -n "$SAVED_CLIPBOARD" ]; then
     echo -n "$SAVED_CLIPBOARD" | $CLIP_COPY
@@ -304,8 +321,8 @@ rm -f "$RECORDING"
 pw-record --channels=1 --rate=16000 "$RECORDING" &
 PW_PID=$!
 
-# Show recording notification
-notify-send -a xhisper -i audio-input-microphone "xhisper" "Recording..." -t 30000 &
+# Show recording overlay
+show_status recording
 
 # Wait for key release
 wait_for_key_release
@@ -320,12 +337,12 @@ SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
 
 # Check if recording is silent
 if is_silent "$RECORDING"; then
-  notify-send -a xhisper -i dialog-warning "xhisper" "No sound detected" -t 2000
+  show_status silent --timeout 2000
   rm -f "$RECORDING"
   exit 0
 fi
 
-notify-send -a xhisper -i audio-input-microphone "xhisper" "Transcribing..." -t 30000
+show_status transcribing
 TRANSCRIPTION=$(transcribe "$RECORDING")
 # Check if transcription starts with "translate this"
 if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
@@ -336,14 +353,14 @@ if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
   else
     TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
   fi
-  notify-send -a xhisper -i audio-input-microphone "xhisper" "Translating..." -t 30000
+  show_status translating
   TRANSCRIPTION=$(translate_to_french "$TEXT_TO_TRANSLATE" "$FORMALITY")
 fi
 
 paste "$TRANSCRIPTION"
 
-# Close any lingering notifications
-notify-send -a xhisper -i dialog-information "xhisper" "Done" -t 1000
+# Show done overlay briefly
+show_status done --timeout 1500
 
 # Restore original clipboard
 sleep 0.1

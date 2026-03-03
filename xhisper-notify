@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""xhisper-notify: Animated wave pill overlay for xhisper status."""
+
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, Gdk, GLib
+import cairo
+import math
+import sys
+import os
+import signal
+import time
+
+# Wave bar layout — heights (0–1) matching an audio waveform shape
+NUM_BARS = 17
+BAR_WIDTH = 5
+BAR_GAP = 4
+BAR_RADIUS = 2.5
+BASE_HEIGHTS = [
+    0.30, 0.85, 0.30, 0.90, 0.55, 0.80, 0.95, 0.35,
+    0.60, 0.95, 0.80, 0.25, 0.85, 0.90, 0.55, 0.30, 0.50,
+]
+
+# Colors
+BG_COLOR = (0.10, 0.10, 0.10, 0.93)
+BAR_COLOR = (0.93, 0.91, 0.85)
+TEXT_COLOR = (0.80, 0.78, 0.73, 0.9)
+
+STATE_LABELS = {
+    "recording": "Recording",
+    "transcribing": "Transcribing",
+    "translating": "Translating",
+    "done": "Done",
+    "silent": "No sound",
+}
+
+PID_FILE = "/tmp/xhisper-notify.pid"
+
+
+class WavePill(Gtk.Window):
+    def __init__(self, state="recording", timeout_ms=0):
+        super().__init__(type=Gtk.WindowType.POPUP)
+        self.state = state
+        self.label = STATE_LABELS.get(state, state)
+        self.start_time = time.time()
+        self.fade_alpha = 0.0
+        self.slide_progress = 0.0  # 0 = hidden below, 1 = fully visible
+        self.closing = False
+
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual()
+        if visual:
+            self.set_visual(visual)
+        self.set_app_paintable(True)
+
+        # Dimensions
+        wave_w = NUM_BARS * BAR_WIDTH + (NUM_BARS - 1) * BAR_GAP
+        self.pill_height = 48
+        self.max_bar_height = self.pill_height - 14
+        text_w = (len(self.label) + 3) * 8 + 8  # +3 for animated dots
+        self.pill_width = 24 + wave_w + 16 + text_w + 20
+        self.wave_x = 20
+        self.set_size_request(self.pill_width, self.pill_height + 4)  # +4 for shadow
+
+        # Bottom-center of screen — pill slides up from below
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor() or display.get_monitor(0)
+        geom = monitor.get_geometry()
+        self.target_x = geom.x + (geom.width - self.pill_width) // 2
+        self.screen_bottom = geom.y + geom.height
+        self.target_y = self.screen_bottom - self.pill_height - 55  # 55px from bottom
+        self.slide_distance = 60  # pixels to slide up
+        self.move(self.target_x, self.screen_bottom)  # start hidden below
+
+        self.connect('draw', self.on_draw)
+        GLib.timeout_add(33, self.on_tick)  # ~30 fps
+
+        if timeout_ms > 0:
+            GLib.timeout_add(max(timeout_ms - 500, 100), self.start_close)
+
+        with open(PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+
+        self.show_all()
+
+    def start_close(self):
+        self.closing = True
+        GLib.timeout_add(600, lambda: Gtk.main_quit() or False)
+        return False
+
+    def ease_out_cubic(self, t):
+        return 1.0 - (1.0 - t) ** 3
+
+    def on_tick(self):
+        if not self.closing:
+            self.fade_alpha = min(1.0, self.fade_alpha + 0.12)
+            self.slide_progress = min(1.0, self.slide_progress + 0.08)
+        else:
+            self.fade_alpha = max(0.0, self.fade_alpha - 0.05)
+            self.slide_progress = max(0.0, self.slide_progress - 0.06)
+
+        # Slide position with easing
+        eased = self.ease_out_cubic(self.slide_progress)
+        y = self.target_y + self.slide_distance * (1.0 - eased)
+        self.move(self.target_x, int(y))
+
+        self.queue_draw()
+        return True
+
+    def rounded_rect(self, cr, x, y, w, h, r):
+        r = min(r, w / 2, h / 2)
+        cr.new_path()
+        cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+        cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+        cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+        cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+        cr.close_path()
+
+    def bar_height(self, i, t):
+        base = BASE_HEIGHTS[i] * self.max_bar_height
+        if self.state == "recording":
+            f = 0.7 + 0.3 * math.sin(t * 5 + i * 0.45)
+        elif self.state in ("transcribing", "translating"):
+            f = 0.75 + 0.15 * math.sin(t * 2.5 + i * 0.35)
+        elif self.state == "done":
+            f = max(0.15, 1.0 - t * 1.5)
+        elif self.state == "silent":
+            f = 0.2 + 0.05 * math.sin(t * 1.5 + i * 0.3)
+        else:
+            f = 0.5
+        return max(base * f, BAR_WIDTH)
+
+    def on_draw(self, widget, cr):
+        t = time.time() - self.start_time
+        a = self.fade_alpha
+        h = self.pill_height
+        w = self.pill_width
+        r = h / 2
+        cy = h / 2
+
+        # Clear
+        cr.set_operator(cairo.OPERATOR_SOURCE)
+        cr.set_source_rgba(0, 0, 0, 0)
+        cr.paint()
+        cr.set_operator(cairo.OPERATOR_OVER)
+
+        # Shadow
+        self.rounded_rect(cr, 2, 3, w, h, r)
+        cr.set_source_rgba(0, 0, 0, 0.3 * a)
+        cr.fill()
+
+        # Background
+        self.rounded_rect(cr, 0, 0, w, h, r)
+        cr.set_source_rgba(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3] * a)
+        cr.fill()
+
+        # Bars
+        for i in range(NUM_BARS):
+            bx = self.wave_x + i * (BAR_WIDTH + BAR_GAP)
+            bh = self.bar_height(i, t)
+            by = cy - bh / 2
+            self.rounded_rect(cr, bx, by, BAR_WIDTH, bh, BAR_RADIUS)
+            cr.set_source_rgba(BAR_COLOR[0], BAR_COLOR[1], BAR_COLOR[2], a)
+            cr.fill()
+
+        # Label
+        dots = ""
+        if self.state in ("recording", "transcribing", "translating"):
+            dots = "." * (int(t * 2) % 4)
+        tx = self.wave_x + NUM_BARS * (BAR_WIDTH + BAR_GAP) + 8
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(13)
+        ext = cr.text_extents(self.label + dots)
+        cr.move_to(tx, cy + ext.height / 2)
+        cr.set_source_rgba(TEXT_COLOR[0], TEXT_COLOR[1], TEXT_COLOR[2], TEXT_COLOR[3] * a)
+        cr.show_text(self.label + dots)
+
+        return False
+
+
+def kill_existing():
+    if os.path.exists(PID_FILE):
+        try:
+            with open(PID_FILE) as f:
+                pid = int(f.read().strip())
+            os.kill(pid, signal.SIGTERM)
+            time.sleep(0.05)
+        except (ValueError, ProcessLookupError, PermissionError, OSError):
+            pass
+        try:
+            os.unlink(PID_FILE)
+        except OSError:
+            pass
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: xhisper-notify <state> [--timeout MS]", file=sys.stderr)
+        print("States: recording, transcribing, translating, done, silent, hide", file=sys.stderr)
+        sys.exit(1)
+
+    state = sys.argv[1]
+    timeout_ms = 0
+    if "--timeout" in sys.argv:
+        idx = sys.argv.index("--timeout")
+        if idx + 1 < len(sys.argv):
+            timeout_ms = int(sys.argv[idx + 1])
+
+    kill_existing()
+    if state == "hide":
+        return
+
+    signal.signal(signal.SIGTERM, lambda *_: GLib.idle_add(Gtk.main_quit))
+
+    WavePill(state=state, timeout_ms=timeout_ms)
+    Gtk.main()
+
+    try:
+        os.unlink(PID_FILE)
+    except OSError:
+        pass
+
+
+if __name__ == "__main__":
+    main()

@@ -14,16 +14,18 @@ xhispertool: xhispertool.c
 test: test.c
 	$(CC) $(CFLAGS) test.c -o test
 
-install: xhispertool xhisper.sh
+install: xhispertool xhisper.sh xhisper-notify
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 xhispertool $(DESTDIR)$(BINDIR)/xhispertool
 	ln -sf xhispertool $(DESTDIR)$(BINDIR)/xhispertoold
 	install -m 755 xhisper.sh $(DESTDIR)$(BINDIR)/xhisper
+	install -m 755 xhisper-notify $(DESTDIR)$(BINDIR)/xhisper-notify
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/xhisper
 	rm -f $(DESTDIR)$(BINDIR)/xhispertool
 	rm -f $(DESTDIR)$(BINDIR)/xhispertoold
+	rm -f $(DESTDIR)$(BINDIR)/xhisper-notify
 
 clean:
 	rm -f xhispertool xhispertoold test

@@ -4,12 +4,12 @@
   <br><br>
 </div>
 
-Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, desktop notifications, keyboard layout compatibility, translation support, and clipboard manager integration.
+Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, animated status overlay, keyboard layout compatibility, translation support, and clipboard manager integration.
 
 ## Features
 
 - **Push-to-talk** — Hold your shortcut key to record, release to transcribe. No double-press needed
-- **Desktop notifications** — Recording, transcribing, and translating states shown as GNOME notifications instead of pasted text at cursor
+- **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, and translating (falls back to desktop notifications if GTK is unavailable)
 - **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
 - **Translate to French** — Say "translate this ..." and the rest of your speech will be translated to French via Groq LLM. Casual (tu) by default, say "translate this official ..." for formal (vous)
@@ -25,7 +25,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 
 ```sh
 sudo apt update
-sudo apt install pipewire jq curl ffmpeg gcc xclip python3 bc
+sudo apt install pipewire jq curl ffmpeg gcc xclip python3 python3-gi gir1.2-gtk-3.0 bc
 ```
 
 ### 2. Add user to input group
@@ -93,10 +93,10 @@ gsettings set $custom_kbd:$kbd_path command "$action"
 
 **Hold** your shortcut key to record, **release** to stop and transcribe. The transcribed text is pasted at your cursor.
 
-Desktop notifications show the current state:
-- **Recording...** — while you hold the key
-- **Transcribing...** — after you release, while Whisper processes your audio
-- **Done** — text has been pasted
+An animated wave pill overlay slides up from the bottom of your screen showing the current state:
+- **Recording** — animated wave bars while you hold the key
+- **Transcribing** — gentler pulse while Whisper processes your audio
+- **Done** — brief confirmation, then fades out
 
 ### Translate to French
 
@@ -139,7 +139,7 @@ cp default_xhisperrc ~/.config/xhisper/xhisperrc
 
 **Wrong text pasted**: If xhisper pastes old clipboard content instead of the transcription, make sure `xclip` is installed (`sudo apt install xclip`).
 
-**Notifications not showing**: Make sure `notify-send` is available (`sudo apt install libnotify-bin`).
+**Overlay not showing**: Make sure PyGObject is installed (`sudo apt install python3-gi gir1.2-gtk-3.0`). The script falls back to `notify-send` if GTK is unavailable.
 
 ---
 
