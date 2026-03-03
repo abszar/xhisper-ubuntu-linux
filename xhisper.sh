@@ -243,6 +243,8 @@ translate_to_french() {
 
 # Find recording process, if so then kill
 if pgrep -f "$PROCESS_PATTERN" > /dev/null; then
+  # Save clipboard before xhisper modifies it
+  SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
   pkill -f "$PROCESS_PATTERN"; sleep 0.2 # Buffer for flush
   delete_n_chars 14 # "(recording...)"
 
@@ -269,10 +271,23 @@ if pgrep -f "$PROCESS_PATTERN" > /dev/null; then
 
   paste "$TRANSCRIPTION"
 
+  # Restore original clipboard
+  sleep 0.1
+  if [ -n "$SAVED_CLIPBOARD" ]; then
+    echo -n "$SAVED_CLIPBOARD" | $CLIP_COPY
+  fi
+
   rm -f "$RECORDING"
 else
   # No recording running, so start
+  # Save clipboard before pasting status text
+  SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
   sleep 0.2
   paste "(recording...)"
+  # Restore original clipboard while recording
+  sleep 0.1
+  if [ -n "$SAVED_CLIPBOARD" ]; then
+    echo -n "$SAVED_CLIPBOARD" | $CLIP_COPY
+  fi
   pw-record --channels=1 --rate=16000 "$RECORDING"
 fi
