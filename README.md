@@ -1,12 +1,12 @@
 <div align="center">
-  <h1>xhisper <i>/ˈzɪspər/</i></h1>
+  <h1>xhisper Ubuntu Linux</h1>
   <img src="demo.gif" alt="xhisper demo" width="300">
   <br><br>
 </div>
 
-Voice-to-text dictation at cursor for Ubuntu. Fork of [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with keyboard layout compatibility, translation support, and clipboard manager integration.
+Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with keyboard layout compatibility, translation support, and clipboard manager integration.
 
-## What's different in this fork
+## Features
 
 - **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout without needing a secondary QWERTY layout
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
@@ -60,8 +60,8 @@ echo 'GROQ_API_KEY=<your_API_key>' >> ~/.env
 ### 5. Clone, build, and install
 
 ```sh
-git clone --depth 1 https://github.com/abszar/xhisper.git
-cd xhisper && make
+git clone --depth 1 https://github.com/abszar/xhisper-ubuntu-linux.git
+cd xhisper-ubuntu-linux && make
 sudo make install
 ```
 
@@ -94,11 +94,17 @@ Press your shortcut key **twice**:
 
 ### Translate to French
 
-Start your dictation with **"translate this"** followed by what you want translated:
+Start your dictation with **"translate this"** followed by what you want translated. By default it uses **casual French (tu)**:
 
-> "Translate this I would like to schedule a meeting for tomorrow"
+> "Translate this how are you doing"
 
-Result pasted: `Je voudrais planifier une réunion pour demain`
+Result: `Comment tu vas ?`
+
+For **formal French (vous)**, say **"translate this official"**:
+
+> "Translate this official how are you doing"
+
+Result: `Comment allez-vous ?`
 
 ### View logs
 
