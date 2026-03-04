@@ -17,3 +17,15 @@ silence-percentage : 95
 # Translation:
 target-language : French
 
+# AI Auto-editing:
+# Cleans up grammar, removes filler words, fixes punctuation after transcription.
+auto-edit        : true
+
+# Tone Adaptation:
+# Detects the active window and adjusts auto-edit style (e.g., casual for Slack, formal for email).
+tone-adaptation  : true
+
+# Personal Dictionary:
+# Add custom words/names to ~/.config/xhisper/dictionary.txt (one per line)
+# to improve Whisper's recognition accuracy for domain-specific terms.
+

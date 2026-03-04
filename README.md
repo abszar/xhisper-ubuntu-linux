@@ -4,13 +4,16 @@
   <br><br>
 </div>
 
-Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, animated status overlay, keyboard layout compatibility, translation support, and clipboard manager integration.
+Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, AI auto-editing, tone adaptation, animated status overlay, keyboard layout compatibility, translation support, and clipboard manager integration.
 
 ## Features
 
 - **X11 and Wayland** — Works on both display servers. Key release detection uses XQueryKeymap on X11, evdev on Wayland
 - **Push-to-talk** — Hold your shortcut key to record, release to transcribe. No double-press needed
-- **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, and translating (falls back to desktop notifications if GTK is unavailable)
+- **AI auto-editing** — Automatically cleans up grammar, removes filler words (um, uh, like), and fixes punctuation before pasting. Always on by default, can be disabled in config
+- **Tone adaptation** — Detects the active window (Slack, Gmail, VS Code, etc.) and adjusts the auto-edit style accordingly — casual for chat, professional for email, concise for code comments
+- **Personal dictionary** — Add custom words, names, and technical terms to `~/.config/xhisper/dictionary.txt` to improve Whisper's recognition accuracy
+- **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, editing, and translating (falls back to desktop notifications if GTK is unavailable)
 - **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
 - **Voice-triggered translation** — Say "translate this ..." to translate to your default language, or "translate this to Spanish ..." for any language. Add "official" for formal register
@@ -26,7 +29,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 
 ```sh
 sudo apt update
-sudo apt install pipewire jq curl ffmpeg gcc xclip wl-clipboard python3 python3-gi gir1.2-gtk-3.0 bc
+sudo apt install pipewire jq curl ffmpeg gcc xclip wl-clipboard python3 python3-gi gir1.2-gtk-3.0 bc xdotool
 ```
 
 ### 2. Add user to input group
@@ -97,7 +100,53 @@ gsettings set $custom_kbd:$kbd_path command "$action"
 An animated wave pill overlay slides up from the bottom of your screen showing the current state:
 - **Recording** — animated wave bars while you hold the key
 - **Transcribing** — gentler pulse while Whisper processes your audio
+- **Editing** — AI is cleaning up your text
 - **Done** — brief confirmation, then fades out
+
+### AI Auto-editing
+
+Every transcription is automatically cleaned up by an AI before pasting:
+- Removes filler words (um, uh, like, you know)
+- Fixes grammar and punctuation
+- Preserves your meaning
+
+Disable it in your config if you want raw transcriptions:
+```
+auto-edit : false
+```
+
+### Tone Adaptation
+
+When auto-editing is on, xhisper detects the active window and adjusts the writing style:
+
+| Window | Tone |
+|--------|------|
+| Slack, Discord, Telegram | Casual chat |
+| Gmail, Outlook, Thunderbird | Professional email |
+| VS Code, terminal | Concise technical |
+| Google Docs, LibreOffice | Well-structured prose |
+| Jira, GitHub | Concise and technical |
+
+Disable it in your config:
+```
+tone-adaptation : false
+```
+
+### Personal Dictionary
+
+Add custom words to improve Whisper's recognition of names, jargon, or technical terms:
+
+```sh
+mkdir -p ~/.config/xhisper
+cp default_dictionary.txt ~/.config/xhisper/dictionary.txt
+```
+
+Then edit `~/.config/xhisper/dictionary.txt` — one word or phrase per line:
+```
+Kubernetes
+PostgreSQL
+your-company-name
+```
 
 ### Translation
 
@@ -132,6 +181,7 @@ Configuration is read from `~/.config/xhisper/xhisperrc`:
 ```sh
 mkdir -p ~/.config/xhisper
 cp default_xhisperrc ~/.config/xhisper/xhisperrc
+cp default_dictionary.txt ~/.config/xhisper/dictionary.txt
 ```
 
 ---
@@ -149,5 +199,5 @@ cp default_xhisperrc ~/.config/xhisper/xhisperrc
 ---
 
 <p align="center">
-  <em>Push-to-talk voice dictation for Ubuntu with AZERTY support and multi-language translation</em>
+  <em>Push-to-talk voice dictation for Ubuntu with AI auto-editing, tone adaptation, and multi-language translation</em>
 </p>

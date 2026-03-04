@@ -41,6 +41,7 @@ STATE_LABELS = {
     "recording": "Recording",
     "transcribing": "Transcribing",
     "translating": "Translating",
+    "editing": "Editing",
     "done": "Done",
     "silent": "No sound",
 }
@@ -148,7 +149,7 @@ class WavePill(Gtk.Window):
         base = BASE_HEIGHTS[i] * self.max_bar_height
         if self.state == "recording":
             f = 0.7 + 0.3 * math.sin(t * 5 + i * 0.45)
-        elif self.state in ("transcribing", "translating"):
+        elif self.state in ("transcribing", "translating", "editing"):
             f = 0.75 + 0.15 * math.sin(t * 2.5 + i * 0.35)
         elif self.state == "done":
             f = max(0.15, 1.0 - t * 1.5)
@@ -188,7 +189,7 @@ class WavePill(Gtk.Window):
             cr.fill()
 
         dots = ""
-        if self.state in ("recording", "transcribing", "translating"):
+        if self.state in ("recording", "transcribing", "translating", "editing"):
             dots = "." * (int(t * 2) % 4)
         tx = self.wave_x + NUM_BARS * (BAR_WIDTH + BAR_GAP) + 8
         cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)

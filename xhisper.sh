@@ -80,8 +80,12 @@ silence_percentage=95
 non_ascii_initial_delay=0.1
 non_ascii_default_delay=0.025
 target_language="French"
+auto_edit="true"
+tone_adaptation="true"
 
-CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/xhisper/xhisperrc"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/xhisper"
+CONFIG_FILE="$CONFIG_DIR/xhisperrc"
+DICTIONARY_FILE="$CONFIG_DIR/dictionary.txt"
 
 if [ -f "$CONFIG_FILE" ]; then
   while IFS=: read -r key value || [ -n "$key" ]; do
@@ -97,8 +101,22 @@ if [ -f "$CONFIG_FILE" ]; then
       non-ascii-initial-delay) non_ascii_initial_delay="$value" ;;
       non-ascii-default-delay) non_ascii_default_delay="$value" ;;
       target-language) target_language="$value" ;;
+      auto-edit) auto_edit="$value" ;;
+      tone-adaptation) tone_adaptation="$value" ;;
     esac
   done < "$CONFIG_FILE"
+fi
+
+# Load personal dictionary into transcription prompt
+if [ -f "$DICTIONARY_FILE" ]; then
+  dict_words=$(grep -v '^#' "$DICTIONARY_FILE" | grep -v '^[[:space:]]*$' | tr '\n' ', ' | sed 's/,$//')
+  if [ -n "$dict_words" ]; then
+    if [ -n "$transcription_prompt" ]; then
+      transcription_prompt="$transcription_prompt, $dict_words"
+    else
+      transcription_prompt="$dict_words"
+    fi
+  fi
 fi
 
 # Auto-start daemon if not running
@@ -157,6 +175,7 @@ show_status() {
       recording)    notify-send -a xhisper "xhisper" "Recording..." -t 30000 ;;
       transcribing) notify-send -a xhisper "xhisper" "Transcribing..." -t 30000 ;;
       translating)  notify-send -a xhisper "xhisper" "Translating..." -t 30000 ;;
+      editing)      notify-send -a xhisper "xhisper" "Editing..." -t 30000 ;;
       done)         notify-send -a xhisper "xhisper" "Done" -t 1000 ;;
       silent)       notify-send -a xhisper "xhisper" "No sound detected" -t 2000 ;;
     esac
@@ -249,6 +268,77 @@ translate_text() {
 
   logging_end_and_write_to_logfile "Translation" "$translated" "$logging_start"
   echo "$translated"
+}
+
+get_active_window() {
+  local session=${XDG_SESSION_TYPE:-x11}
+  local wname=""
+  if [ "$session" != "wayland" ]; then
+    if command -v xdotool &> /dev/null; then
+      wname=$(xdotool getactivewindow getwindowname 2>/dev/null)
+    fi
+  else
+    if command -v gdbus &> /dev/null; then
+      wname=$(gdbus call --session --dest org.gnome.Shell \
+        --object-path /org/gnome/Shell \
+        --method org.gnome.Shell.Eval \
+        'global.display.focus_window ? global.display.focus_window.get_title() : ""' \
+        2>/dev/null | sed -n "s/^(true, '\(.*\)')$/\1/p")
+    fi
+  fi
+  echo "$wname"
+}
+
+get_tone_for_window() {
+  local wname="$1"
+  local wname_lower=$(echo "$wname" | tr '[:upper:]' '[:lower:]')
+  case "$wname_lower" in
+    *slack*|*discord*|*telegram*|*whatsapp*|*messenger*)
+      echo "casual chat message — keep it short and conversational" ;;
+    *gmail*|*outlook*|*thunderbird*|*mail*|*proton*)
+      echo "email — use proper sentences, be clear and professional" ;;
+    *code*|*vim*|*neovim*|*emacs*|*intellij*|*terminal*|*konsole*|*gnome-terminal*)
+      echo "code comment or technical note — be precise and concise" ;;
+    *docs*|*notion*|*obsidian*|*libreoffice*|*word*)
+      echo "document — use proper grammar and well-structured sentences" ;;
+    *jira*|*linear*|*github*|*gitlab*)
+      echo "issue tracker or PR — be concise and technical" ;;
+    *)
+      echo "general — use clear, natural sentences" ;;
+  esac
+}
+
+auto_edit_text() {
+  local raw_text="$1"
+  local tone="$2"
+  local logging_start=$(date +%s%N)
+
+  local tone_instruction=""
+  if [ -n "$tone" ] && [ "$tone" != "general — use clear, natural sentences" ]; then
+    tone_instruction=" The text is being typed into a $tone."
+  fi
+
+  local edited=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions" \
+    -H "Authorization: Bearer $GROQ_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg text "$raw_text" --arg tone "$tone_instruction" '{
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: ("You are a dictation auto-editor. Clean up the following dictated text: fix grammar, remove filler words (um, uh, like, you know), fix punctuation, and improve clarity. Do NOT change the meaning or add new information. Keep the same language." + $tone + " Output ONLY the cleaned text, nothing else.")
+        },
+        {
+          role: "user",
+          content: $text
+        }
+      ],
+      temperature: 0.2
+    }')" \
+    | jq -r '.choices[0].message.content')
+
+  logging_end_and_write_to_logfile "Auto-edit" "$edited" "$logging_start"
+  echo "$edited"
 }
 
 # Wait for all keys to be released (push-to-talk detection)
@@ -373,16 +463,16 @@ trap cleanup EXIT INT TERM
 
 # Main — Push-to-talk flow
 
+# Show recording overlay immediately
+show_status recording
+
 # Small delay to let GNOME finish processing the shortcut key
-sleep 0.3
+sleep 0.15
 
 # Start recording in background
 rm -f "$RECORDING"
 pw-record --channels=1 --rate=16000 "$RECORDING" &
 PW_PID=$!
-
-# Show recording overlay
-show_status recording
 
 # Wait for key release
 wait_for_key_release
@@ -404,6 +494,7 @@ fi
 
 show_status transcribing
 TRANSCRIPTION=$(transcribe "$RECORDING")
+WAS_TRANSLATED=0
 # Check if transcription starts with "translate this"
 if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
   TARGET_LANG="$target_language"
@@ -422,6 +513,20 @@ if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
   fi
   show_status translating
   TRANSCRIPTION=$(translate_text "$TEXT_TO_TRANSLATE" "$FORMALITY" "$TARGET_LANG")
+  WAS_TRANSLATED=1
+fi
+
+# AI auto-editing (skip for translations — they're already clean)
+if [ "$auto_edit" = "true" ] && [ "$WAS_TRANSLATED" -eq 0 ] && [ -n "$TRANSCRIPTION" ]; then
+  TONE=""
+  if [ "$tone_adaptation" = "true" ]; then
+    ACTIVE_WINDOW=$(get_active_window)
+    TONE=$(get_tone_for_window "$ACTIVE_WINDOW")
+    echo "=== Tone ===" >> "$LOGFILE"
+    echo "Window: [$ACTIVE_WINDOW] → Tone: [$TONE]" >> "$LOGFILE"
+  fi
+  show_status editing
+  TRANSCRIPTION=$(auto_edit_text "$TRANSCRIPTION" "$TONE")
 fi
 
 paste "$TRANSCRIPTION"

@@ -1,0 +1,10 @@
+# xhisper personal dictionary
+# Add one word or phrase per line to improve Whisper recognition.
+# Lines starting with # are ignored.
+#
+# Examples:
+# Kubernetes
+# PostgreSQL
+# nginx
+# GraphQL
+# your-company-name
