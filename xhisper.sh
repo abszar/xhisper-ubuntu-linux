@@ -252,51 +252,108 @@ translate_text() {
 }
 
 # Wait for all keys to be released (push-to-talk detection)
+# Auto-detects X11 vs Wayland and uses the appropriate method
 wait_for_key_release() {
   python3 << 'PYEOF'
-from ctypes import cdll, c_char
-import time
+import os, time
 
-X11 = cdll.LoadLibrary("libX11.so.6")
-display = X11.XOpenDisplay(None)
-if not display:
-    exit(0)
+session = os.environ.get('XDG_SESSION_TYPE', 'x11')
 
-keys_start = (c_char * 32)()
-keys_check = (c_char * 32)()
-
-# Capture which keys are currently pressed
-time.sleep(0.05)
-X11.XQueryKeymap(display, keys_start)
-
-# Find pressed keycodes
-pressed = set()
-for i in range(32):
-    b = keys_start[i] if isinstance(keys_start[i], int) else ord(keys_start[i])
-    for bit in range(8):
-        if b & (1 << bit):
-            pressed.add(i * 8 + bit)
-
-if not pressed:
-    X11.XCloseDisplay(display)
-    exit(0)
-
-# Wait until all originally pressed keys are released
-while True:
+if session != 'wayland':
+    # X11: use XQueryKeymap
+    from ctypes import cdll, c_char
+    X11 = cdll.LoadLibrary("libX11.so.6")
+    display = X11.XOpenDisplay(None)
+    if not display:
+        exit(0)
+    keys_start = (c_char * 32)()
+    keys_check = (c_char * 32)()
     time.sleep(0.05)
-    X11.XQueryKeymap(display, keys_check)
-    still_pressed = False
-    for kc in pressed:
-        byte_idx = kc // 8
-        bit_idx = kc % 8
-        b = keys_check[byte_idx] if isinstance(keys_check[byte_idx], int) else ord(keys_check[byte_idx])
-        if b & (1 << bit_idx):
-            still_pressed = True
+    X11.XQueryKeymap(display, keys_start)
+    pressed = set()
+    for i in range(32):
+        b = keys_start[i] if isinstance(keys_start[i], int) else ord(keys_start[i])
+        for bit in range(8):
+            if b & (1 << bit):
+                pressed.add(i * 8 + bit)
+    if not pressed:
+        X11.XCloseDisplay(display)
+        exit(0)
+    while True:
+        time.sleep(0.05)
+        X11.XQueryKeymap(display, keys_check)
+        still = False
+        for kc in pressed:
+            b = keys_check[kc // 8]
+            b = b if isinstance(b, int) else ord(b)
+            if b & (1 << (kc % 8)):
+                still = True
+                break
+        if not still:
             break
-    if not still_pressed:
-        break
+    X11.XCloseDisplay(display)
+else:
+    # Wayland: use evdev (kernel input subsystem)
+    import fcntl, glob
 
-X11.XCloseDisplay(display)
+    def EVIOCGKEY(length):
+        return (2 << 30) | (ord('E') << 8) | 0x18 | (length << 16)
+
+    KEY_MAX = 0x2ff
+    BUF = (KEY_MAX + 7) // 8 + 1
+
+    def find_keyboards():
+        kbds = []
+        for dev in sorted(glob.glob('/dev/input/event*')):
+            try:
+                n = dev.rsplit('event', 1)[1]
+                with open('/sys/class/input/event%s/device/capabilities/ev' % n) as f:
+                    if not (int(f.read().strip(), 16) & 2):
+                        continue
+                with open('/sys/class/input/event%s/device/capabilities/key' % n) as f:
+                    if len(f.read().strip()) > 20:
+                        kbds.append(dev)
+            except (IOError, ValueError):
+                pass
+        return kbds
+
+    def get_pressed(fd, buf):
+        try:
+            fcntl.ioctl(fd, EVIOCGKEY(BUF), buf)
+        except OSError:
+            return set()
+        return {i for i in range(KEY_MAX + 1) if buf[i // 8] & (1 << (i % 8))}
+
+    fds = []
+    for kb in find_keyboards():
+        try:
+            fds.append(os.open(kb, os.O_RDONLY))
+        except OSError:
+            pass
+    if not fds:
+        exit(0)
+
+    time.sleep(0.05)
+    buf = bytearray(BUF)
+    initial = set()
+    for fd in fds:
+        initial |= get_pressed(fd, buf)
+    if not initial:
+        for fd in fds: os.close(fd)
+        exit(0)
+
+    while True:
+        time.sleep(0.05)
+        still = False
+        for fd in fds:
+            if initial & get_pressed(fd, buf):
+                still = True
+                break
+        if not still:
+            break
+
+    for fd in fds:
+        os.close(fd)
 PYEOF
 }
 

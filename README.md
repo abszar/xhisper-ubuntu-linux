@@ -8,6 +8,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 
 ## Features
 
+- **X11 and Wayland** — Works on both display servers. Key release detection uses XQueryKeymap on X11, evdev on Wayland
 - **Push-to-talk** — Hold your shortcut key to record, release to transcribe. No double-press needed
 - **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, and translating (falls back to desktop notifications if GTK is unavailable)
 - **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout
@@ -25,7 +26,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 
 ```sh
 sudo apt update
-sudo apt install pipewire jq curl ffmpeg gcc xclip python3 python3-gi gir1.2-gtk-3.0 bc
+sudo apt install pipewire jq curl ffmpeg gcc xclip wl-clipboard python3 python3-gi gir1.2-gtk-3.0 bc
 ```
 
 ### 2. Add user to input group
@@ -143,7 +144,7 @@ cp default_xhisperrc ~/.config/xhisper/xhisperrc
 
 **Wrong text pasted**: If xhisper pastes old clipboard content instead of the transcription, make sure `xclip` is installed (`sudo apt install xclip`).
 
-**Overlay not showing**: Make sure PyGObject is installed (`sudo apt install python3-gi gir1.2-gtk-3.0`). The script falls back to `notify-send` if GTK is unavailable.
+**Overlay not showing**: Make sure PyGObject is installed (`sudo apt install python3-gi gir1.2-gtk-3.0`). On Wayland, install `gir1.2-gtklayershell-0.1` for the animated overlay — without it, the tool falls back to standard desktop notifications.
 
 ---
 
