@@ -18,6 +18,7 @@ Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](ht
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
 - **Voice-triggered translation** — Say "translate this ..." to translate to your default language, or "translate this to Spanish ..." for any language. Add "official" for formal register
 - **Stability** — PID-file based concurrency control prevents duplicate instances from interfering with each other
+- **Custom STT/LLM endpoints** — Use Groq's API by default, or point to any OpenAI-compatible endpoint — local Whisper servers, Ollama, vLLM, or any other provider
 - **Clipboard preservation** — Your clipboard content is saved before transcription and restored after pasting
 - **Clipboard manager cleanup** — Automatically removes xhisper's temporary clipboard entries from CopyQ history
 
@@ -56,13 +57,15 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger /dev/uinput
 ```
 
-### 4. Get a Groq API key
+### 4. Get a Groq API key (or use a local server)
 
 Get a free API key from [console.groq.com](https://console.groq.com) and add it to `~/.env`:
 
 ```sh
 echo 'GROQ_API_KEY=<your_API_key>' >> ~/.env
 ```
+
+Or skip this step if you'll use a local Whisper/LLM server — see [Custom STT/LLM Endpoints](#custom-sttllm-endpoints).
 
 ### 5. Clone, build, and install
 
@@ -147,6 +150,24 @@ Kubernetes
 PostgreSQL
 your-company-name
 ```
+
+### Custom STT/LLM Endpoints
+
+By default, xhisper uses Groq's free API. You can swap in any OpenAI-compatible endpoint — local or remote:
+
+```
+# Local Whisper server (whisper.cpp, faster-whisper-server, etc.)
+stt-url     : http://localhost:8080/v1
+stt-api-key :
+stt-model   : whisper-1
+
+# Local LLM (Ollama, vLLM, llama.cpp, etc.)
+llm-url     : http://localhost:11434/v1
+llm-api-key :
+llm-model   : llama3
+```
+
+Leave `stt-api-key` / `llm-api-key` empty for local servers that don't require auth. When not set, they fall back to `GROQ_API_KEY`.
 
 ### Translation
 

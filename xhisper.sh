@@ -82,6 +82,12 @@ non_ascii_default_delay=0.025
 target_language="French"
 auto_edit="true"
 tone_adaptation="true"
+stt_url="https://api.groq.com/openai/v1"
+stt_api_key=""
+stt_model=""
+llm_url="https://api.groq.com/openai/v1"
+llm_api_key=""
+llm_model="llama-3.3-70b-versatile"
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/xhisper"
 CONFIG_FILE="$CONFIG_DIR/xhisperrc"
@@ -103,9 +109,19 @@ if [ -f "$CONFIG_FILE" ]; then
       target-language) target_language="$value" ;;
       auto-edit) auto_edit="$value" ;;
       tone-adaptation) tone_adaptation="$value" ;;
+      stt-url) stt_url="$value" ;;
+      stt-api-key) stt_api_key="$value" ;;
+      stt-model) stt_model="$value" ;;
+      llm-url) llm_url="$value" ;;
+      llm-api-key) llm_api_key="$value" ;;
+      llm-model) llm_model="$value" ;;
     esac
   done < "$CONFIG_FILE"
 fi
+
+# Resolve API keys: use custom keys if set, otherwise fall back to GROQ_API_KEY
+[ -z "$stt_api_key" ] && stt_api_key="$GROQ_API_KEY"
+[ -z "$llm_api_key" ] && llm_api_key="$GROQ_API_KEY"
 
 # Load personal dictionary into transcription prompt
 if [ -f "$DICTIONARY_FILE" ]; then
@@ -218,17 +234,21 @@ logging_end_and_write_to_logfile() {
 transcribe() {
   local recording="$1"
   local logging_start=$(date +%s%N)
-  local is_long_recording=$(echo "$(get_duration "$recording") > $long_recording_threshold" | bc -l)
-  local model=$([[ $is_long_recording -eq 1 ]] && echo "whisper-large-v3" || echo "whisper-large-v3-turbo")
+  local model="$stt_model"
+  if [ -z "$model" ]; then
+    local is_long_recording=$(echo "$(get_duration "$recording") > $long_recording_threshold" | bc -l)
+    model=$([[ $is_long_recording -eq 1 ]] && echo "whisper-large-v3" || echo "whisper-large-v3-turbo")
+  fi
 
-  local transcription=$(curl -s -X POST "https://api.groq.com/openai/v1/audio/transcriptions" \
-    -H "Authorization: Bearer $GROQ_API_KEY" \
-    -H "Content-Type: multipart/form-data" \
-    -F "file=@$recording" \
-    -F "model=$model" \
-    -F "language=en" \
-    -F "prompt=$transcription_prompt" \
-    | jq -r '.text' | sed 's/^ //')
+  local curl_args=(-s -X POST "${stt_url}/audio/transcriptions"
+    -H "Content-Type: multipart/form-data"
+    -F "file=@$recording"
+    -F "model=$model"
+    -F "language=en"
+    -F "prompt=$transcription_prompt")
+  [ -n "$stt_api_key" ] && curl_args+=(-H "Authorization: Bearer $stt_api_key")
+
+  local transcription=$(curl "${curl_args[@]}" | jq -r '.text' | sed 's/^ //')
 
   logging_end_and_write_to_logfile "Transcription" "$transcription" "$logging_start"
   echo "$transcription"
@@ -247,11 +267,13 @@ translate_text() {
     style_instruction="Use casual/informal register."
   fi
 
-  local translated=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions" \
-    -H "Authorization: Bearer $GROQ_API_KEY" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n --arg text "$raw_text" --arg style "$style_instruction" --arg lang "$lang" '{
-      model: "llama-3.3-70b-versatile",
+  local curl_args=(-s -X POST "${llm_url}/chat/completions"
+    -H "Content-Type: application/json")
+  [ -n "$llm_api_key" ] && curl_args+=(-H "Authorization: Bearer $llm_api_key")
+
+  local translated=$(curl "${curl_args[@]}" \
+    -d "$(jq -n --arg text "$raw_text" --arg style "$style_instruction" --arg lang "$lang" --arg model "$llm_model" '{
+      model: $model,
       messages: [
         {
           role: "system",
@@ -318,11 +340,13 @@ auto_edit_text() {
     tone_instruction=" The text is being typed into a $tone."
   fi
 
-  local edited=$(curl -s -X POST "https://api.groq.com/openai/v1/chat/completions" \
-    -H "Authorization: Bearer $GROQ_API_KEY" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n --arg text "$raw_text" --arg tone "$tone_instruction" '{
-      model: "llama-3.3-70b-versatile",
+  local curl_args=(-s -X POST "${llm_url}/chat/completions"
+    -H "Content-Type: application/json")
+  [ -n "$llm_api_key" ] && curl_args+=(-H "Authorization: Bearer $llm_api_key")
+
+  local edited=$(curl "${curl_args[@]}" \
+    -d "$(jq -n --arg text "$raw_text" --arg tone "$tone_instruction" --arg model "$llm_model" '{
+      model: $model,
       messages: [
         {
           role: "system",

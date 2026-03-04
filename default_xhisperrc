@@ -29,3 +29,27 @@ tone-adaptation  : true
 # Add custom words/names to ~/.config/xhisper/dictionary.txt (one per line)
 # to improve Whisper's recognition accuracy for domain-specific terms.
 
+# API Endpoints:
+# By default, xhisper uses Groq's API (requires GROQ_API_KEY in ~/.env).
+# You can point STT and LLM to any OpenAI-compatible endpoint — including local servers.
+#
+# Speech-to-text (Whisper):
+# stt-url     : https://api.groq.com/openai/v1
+# stt-api-key :
+# stt-model   :
+#
+# LLM (auto-edit, translation):
+# llm-url     : https://api.groq.com/openai/v1
+# llm-api-key :
+# llm-model   : llama-3.3-70b-versatile
+#
+# Local Whisper example (whisper.cpp server):
+# stt-url     : http://localhost:8080/v1
+# stt-api-key :
+# stt-model   : whisper-1
+#
+# Local LLM example (Ollama):
+# llm-url     : http://localhost:11434/v1
+# llm-api-key :
+# llm-model   : llama3
+
