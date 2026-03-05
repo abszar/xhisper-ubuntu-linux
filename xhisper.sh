@@ -248,7 +248,13 @@ transcribe() {
     -F "prompt=$transcription_prompt")
   [ -n "$stt_api_key" ] && curl_args+=(-H "Authorization: Bearer $stt_api_key")
 
-  local transcription=$(curl "${curl_args[@]}" | jq -r '.text' | sed 's/^ //')
+  local raw_response=$(curl "${curl_args[@]}")
+  local transcription=$(echo "$raw_response" | jq -r '.text // empty' | sed 's/^ //')
+
+  if [ -z "$transcription" ]; then
+    echo "=== Transcription Error ===" >> "$LOGFILE"
+    echo "Response: [$raw_response]" >> "$LOGFILE"
+  fi
 
   logging_end_and_write_to_logfile "Transcription" "$transcription" "$logging_start"
   echo "$transcription"
@@ -350,7 +356,7 @@ auto_edit_text() {
       messages: [
         {
           role: "system",
-          content: ("You are a dictation auto-editor. Clean up the following dictated text: fix grammar, remove filler words (um, uh, like, you know), fix punctuation, and improve clarity. Do NOT change the meaning or add new information. Keep the same language." + $tone + " Output ONLY the cleaned text, nothing else.")
+          content: ("You are a light dictation cleaner. Make minimal edits to the following dictated text: only remove obvious filler words (um, uh, like, you know) and fix clear grammatical errors. Keep the speaker\u0027s original wording, tone, and style as much as possible. Do NOT rephrase, restructure, or rewrite sentences. Do NOT add or remove words beyond fillers." + $tone + " Output ONLY the cleaned text, nothing else.")
         },
         {
           role: "user",
@@ -509,8 +515,15 @@ sleep 0.2
 # Save clipboard for paste phase
 SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
 
+# Log recording info
+RECORDING_DURATION=$(get_duration "$RECORDING")
+RECORDING_SIZE=$(stat -c%s "$RECORDING" 2>/dev/null || echo "0")
+echo "=== Recording ===" >> "$LOGFILE"
+echo "Duration: ${RECORDING_DURATION}s, Size: ${RECORDING_SIZE} bytes" >> "$LOGFILE"
+
 # Check if recording is silent
 if is_silent "$RECORDING"; then
+  echo "Result: [silent — skipped]" >> "$LOGFILE"
   show_status silent --timeout 2000
   rm -f "$RECORDING"
   exit 0
