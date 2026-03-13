@@ -1,20 +1,20 @@
 <div align="center">
-  <h1>xhisper Ubuntu Linux</h1>
+  <h1>xhisper</h1>
   <img src="demo.gif" alt="xhisper demo" width="300">
   <br><br>
 </div>
 
-Voice-to-text dictation at cursor for Ubuntu. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, AI auto-editing, tone adaptation, animated status overlay, keyboard layout compatibility, translation support, and clipboard manager integration.
+Voice-to-text dictation at cursor for **Linux and macOS**. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, AI auto-editing, tone adaptation, animated status overlay, keyboard layout compatibility, translation support, and clipboard manager integration.
 
 ## Features
 
-- **X11 and Wayland** — Works on both display servers. Key release detection uses XQueryKeymap on X11, evdev on Wayland
+- **Linux and macOS** — Works on X11, Wayland, and macOS. Key release detection uses XQueryKeymap on X11, evdev on Wayland, and Quartz on macOS
 - **Push-to-talk** — Hold your shortcut key to record, release to transcribe. No double-press needed
 - **AI auto-editing** — Automatically cleans up grammar, removes filler words (um, uh, like), and fixes punctuation before pasting. Always on by default, can be disabled in config
 - **Tone adaptation** — Detects the active window (Slack, Gmail, VS Code, etc.) and adjusts the auto-edit style accordingly — casual for chat, professional for email, concise for code comments
 - **Personal dictionary** — Add custom words, names, and technical terms to `~/.config/xhisper/dictionary.txt` to improve Whisper's recognition accuracy
 - **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, editing, and translating (falls back to desktop notifications if GTK is unavailable)
-- **Non-QWERTY layout support** — Uses clipboard-based paste instead of simulated keypresses, so it works natively with AZERTY, QWERTZ, or any keyboard layout
+- **Smart paste** — Detects the active window and uses the correct paste shortcut (Ctrl+V, Ctrl+Shift+V for terminals on Linux; Cmd+V, Cmd+Shift+V on macOS). Works natively with AZERTY, QWERTZ, or any keyboard layout
 - **English language forced** — Whisper transcription is locked to English to prevent language misdetection
 - **Voice-triggered translation** — Say "translate this ..." to translate to your default language, or "translate this to Spanish ..." for any language. Add "official" for formal register
 - **Stability** — PID-file based concurrency control prevents duplicate instances from interfering with each other
@@ -93,6 +93,55 @@ gsettings set $custom_kbd:$kbd_path name "$name"
 gsettings set $custom_kbd:$kbd_path binding "$binding"
 gsettings set $custom_kbd:$kbd_path command "$action"
 ```
+
+---
+
+## Installation on macOS
+
+### 1. Install dependencies
+
+```sh
+brew install sox ffmpeg jq curl
+```
+
+### 2. Get a Groq API key (or use a local server)
+
+Get a free API key from [console.groq.com](https://console.groq.com) and add it to `~/.env`:
+
+```sh
+echo 'GROQ_API_KEY=<your_API_key>' >> ~/.env
+```
+
+Or skip this step if you'll use a local Whisper/LLM server — see [Custom STT/LLM Endpoints](#custom-sttllm-endpoints).
+
+### 3. Clone and install
+
+```sh
+git clone --depth 1 https://github.com/abszar/xhisper-ubuntu-linux.git
+cd xhisper-ubuntu-linux
+sudo make install
+```
+
+### 4. Grant Accessibility permissions
+
+xhisper uses `osascript` to simulate Cmd+V paste. macOS requires Accessibility permissions for this:
+
+1. Open **System Settings > Privacy & Security > Accessibility**
+2. Add your terminal app (Terminal.app, iTerm2, etc.) to the list
+3. If using Automator or a shortcut app, add that too
+
+### 5. Set up a keyboard shortcut
+
+**Option A: Automator (built-in)**
+1. Open **Automator** > New > **Quick Action**
+2. Set "Workflow receives" to **no input**
+3. Add a **Run Shell Script** action with: `/usr/local/bin/xhisper`
+4. Save it (e.g., "xhisper")
+5. Go to **System Settings > Keyboard > Keyboard Shortcuts > Services** and assign a key
+
+**Option B: Karabiner-Elements**
+1. Install [Karabiner-Elements](https://karabiner-elements.pqrs.org/)
+2. Map your preferred key to run `/usr/local/bin/xhisper`
 
 ---
 
@@ -209,6 +258,8 @@ cp default_dictionary.txt ~/.config/xhisper/dictionary.txt
 
 ## Troubleshooting
 
+### Linux
+
 **No sound detected**: Check that your microphone is working and PipeWire is running (`pw-record --channels=1 test.wav`).
 
 **Permission denied on /dev/uinput**: Make sure you completed step 3 (udev rules) and that you're in the `input` group.
@@ -217,8 +268,16 @@ cp default_dictionary.txt ~/.config/xhisper/dictionary.txt
 
 **Overlay not showing**: Make sure PyGObject is installed (`sudo apt install python3-gi gir1.2-gtk-3.0`). On Wayland, install `gir1.2-gtklayershell-0.1` for the animated overlay — without it, the tool falls back to standard desktop notifications.
 
+### macOS
+
+**No sound detected**: Check that `sox` is installed (`brew install sox`) and your microphone is accessible. Test with `rec test.wav`.
+
+**Paste not working**: Make sure your terminal/automation app has Accessibility permissions (System Settings > Privacy & Security > Accessibility).
+
+**"Not allowed to send keystrokes"**: This means the app running xhisper needs to be added to the Accessibility list in System Settings.
+
 ---
 
 <p align="center">
-  <em>Push-to-talk voice dictation for Ubuntu with AI auto-editing, tone adaptation, and multi-language translation</em>
+  <em>Push-to-talk voice dictation for Linux and macOS with AI auto-editing, tone adaptation, and multi-language translation</em>
 </p>

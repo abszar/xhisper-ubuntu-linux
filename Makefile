@@ -4,7 +4,20 @@ CC = gcc
 CFLAGS = -O2 -Wall -Wextra
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
+UNAME := $(shell uname)
 
+ifeq ($(UNAME),Darwin)
+all: ## macOS: no C compilation needed
+	@echo "macOS detected — no native tools to compile."
+
+install: xhisper.sh
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 755 xhisper.sh $(DESTDIR)$(BINDIR)/xhisper
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/xhisper
+
+else
 all: xhispertool test
 
 xhispertool: xhispertool.c
@@ -26,6 +39,7 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/xhispertool
 	rm -f $(DESTDIR)$(BINDIR)/xhispertoold
 	rm -f $(DESTDIR)$(BINDIR)/xhisper-notify
+endif
 
 clean:
 	rm -f xhispertool xhispertoold test

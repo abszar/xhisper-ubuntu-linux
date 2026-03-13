@@ -1,14 +1,20 @@
 #!/bin/bash
 
-# xhisper v1.2 - Push-to-talk
-# Dictate anywhere in Linux. Transcription at your cursor.
+# xhisper v1.3 - Push-to-talk
+# Dictate anywhere on Linux or macOS. Transcription at your cursor.
 # Hold your shortcut key to record, release to transcribe.
 
-# Requirements:
+# Requirements (Linux):
 # - pipewire, pipewire-utils (audio)
 # - wl-clipboard (Wayland) or xclip (X11) for clipboard
 # - jq, curl, ffmpeg (processing)
 # - python3 with libX11 (for key release detection)
+# Requirements (macOS):
+# - sox (audio: brew install sox)
+# - jq, curl, ffmpeg (brew install jq curl ffmpeg)
+# - Accessibility permissions for Terminal/app running xhisper
+
+OS=$(uname)
 
 [ -f "$HOME/.env" ] && source "$HOME/.env"
 
@@ -58,7 +64,11 @@ fi
 RECORDING="/tmp/xhisper.wav"
 LOGFILE="/tmp/xhisper.log"
 PIDFILE="/tmp/xhisper.pid"
-PROCESS_PATTERN="pw-record.*$RECORDING"
+if [ "$OS" = "Darwin" ]; then
+  PROCESS_PATTERN="rec.*$RECORDING"
+else
+  PROCESS_PATTERN="pw-record.*$RECORDING"
+fi
 
 # Prevent concurrent execution with PID file
 if [ -f "$PIDFILE" ]; then
@@ -135,36 +145,42 @@ if [ -f "$DICTIONARY_FILE" ]; then
   fi
 fi
 
-# Auto-start daemon if not running
-if ! pgrep -x xhispertoold > /dev/null; then
-    "$XHISPERTOOLD" 2>> /tmp/xhispertoold.log &
-    sleep 1
-    if ! pgrep -x xhispertoold > /dev/null; then
-        echo "Error: Failed to start xhispertoold daemon" >&2
-        exit 1
-    fi
-fi
-
-# Check if xhispertool is available
-if ! command -v "$XHISPERTOOL" &> /dev/null; then
-    echo "Error: xhispertool not found" >&2
-    exit 1
-fi
-
-# Detect clipboard tool
-if command -v wl-copy &> /dev/null; then
-    CLIP_COPY="wl-copy"
-    CLIP_PASTE="wl-paste"
-elif command -v xclip &> /dev/null; then
-    CLIP_COPY="xclip -selection clipboard"
-    CLIP_PASTE="xclip -o -selection clipboard"
+# Platform-specific setup
+if [ "$OS" = "Darwin" ]; then
+  # macOS: no daemon needed, use osascript for key simulation
+  CLIP_COPY="pbcopy"
+  CLIP_PASTE="pbpaste"
 else
-    echo "Error: No clipboard tool found." >&2
-    exit 1
+  # Linux: start uinput daemon
+  if ! pgrep -x xhispertoold > /dev/null; then
+      "$XHISPERTOOLD" 2>> /tmp/xhispertoold.log &
+      sleep 1
+      if ! pgrep -x xhispertoold > /dev/null; then
+          echo "Error: Failed to start xhispertoold daemon" >&2
+          exit 1
+      fi
+  fi
+
+  if ! command -v "$XHISPERTOOL" &> /dev/null; then
+      echo "Error: xhispertool not found" >&2
+      exit 1
+  fi
+
+  # Detect clipboard tool
+  if command -v wl-copy &> /dev/null; then
+      CLIP_COPY="wl-copy"
+      CLIP_PASTE="wl-paste"
+  elif command -v xclip &> /dev/null; then
+      CLIP_COPY="xclip -selection clipboard"
+      CLIP_PASTE="xclip -o -selection clipboard"
+  else
+      echo "Error: No clipboard tool found." >&2
+      exit 1
+  fi
 fi
 
 press_wrap_key() {
-  if [ -n "$WRAP_KEY" ]; then
+  if [ -n "$WRAP_KEY" ] && [ "$OS" != "Darwin" ]; then
     "$XHISPERTOOL" "$WRAP_KEY"
   fi
 }
@@ -172,7 +188,7 @@ press_wrap_key() {
 is_terminal_window() {
   local wname_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
   case "$wname_lower" in
-    *terminal*|*konsole*|*alacritty*|*kitty*|*wezterm*|*foot*|*xterm*|*tilix*|*terminator*|*yakuake*|*urxvt*|*rxvt*|*st-*|*tmux*) return 0 ;;
+    *terminal*|*konsole*|*alacritty*|*kitty*|*wezterm*|*foot*|*xterm*|*tilix*|*terminator*|*yakuake*|*urxvt*|*rxvt*|*st-*|*tmux*|*iterm*|*warp*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -183,10 +199,18 @@ paste() {
   press_wrap_key
   echo -n "$text" | $CLIP_COPY
   sleep 0.05
-  if is_terminal_window "$wname"; then
-    "$XHISPERTOOL" shift-paste
+  if [ "$OS" = "Darwin" ]; then
+    if is_terminal_window "$wname"; then
+      osascript -e 'tell application "System Events" to keystroke "v" using {command down, shift down}'
+    else
+      osascript -e 'tell application "System Events" to keystroke "v" using command down'
+    fi
   else
-    "$XHISPERTOOL" paste
+    if is_terminal_window "$wname"; then
+      "$XHISPERTOOL" shift-paste
+    else
+      "$XHISPERTOOL" paste
+    fi
   fi
   sleep 0.05
   if command -v copyq &> /dev/null; then
@@ -199,6 +223,15 @@ paste() {
 show_status() {
   if command -v "$XHISPER_NOTIFY" &> /dev/null; then
     "$XHISPER_NOTIFY" "$@" &
+  elif [ "$OS" = "Darwin" ]; then
+    case "$1" in
+      recording)    osascript -e 'display notification "Recording..." with title "xhisper"' ;;
+      transcribing) osascript -e 'display notification "Transcribing..." with title "xhisper"' ;;
+      translating)  osascript -e 'display notification "Translating..." with title "xhisper"' ;;
+      editing)      osascript -e 'display notification "Editing..." with title "xhisper"' ;;
+      done)         osascript -e 'display notification "Done" with title "xhisper"' ;;
+      silent)       osascript -e 'display notification "No sound detected" with title "xhisper"' ;;
+    esac
   else
     case "$1" in
       recording)    notify-send -a xhisper "xhisper" "Recording..." -t 30000 ;;
@@ -312,21 +345,25 @@ translate_text() {
 }
 
 get_active_window() {
-  local session=${XDG_SESSION_TYPE:-x11}
   local wname=""
-  if [ "$session" != "wayland" ]; then
-    if command -v xdotool &> /dev/null; then
-      wname=$(xdotool getactivewindow getwindowname 2>/dev/null)
-    elif command -v xprop &> /dev/null; then
-      wname=$(xprop -id "$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}')" WM_NAME 2>/dev/null | sed -n 's/.*= "\(.*\)"/\1/p')
-    fi
+  if [ "$OS" = "Darwin" ]; then
+    wname=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
   else
-    if command -v gdbus &> /dev/null; then
-      wname=$(gdbus call --session --dest org.gnome.Shell \
-        --object-path /org/gnome/Shell \
-        --method org.gnome.Shell.Eval \
-        'global.display.focus_window ? global.display.focus_window.get_title() : ""' \
-        2>/dev/null | sed -n "s/^(true, '\(.*\)')$/\1/p")
+    local session=${XDG_SESSION_TYPE:-x11}
+    if [ "$session" != "wayland" ]; then
+      if command -v xdotool &> /dev/null; then
+        wname=$(xdotool getactivewindow getwindowname 2>/dev/null)
+      elif command -v xprop &> /dev/null; then
+        wname=$(xprop -id "$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}')" WM_NAME 2>/dev/null | sed -n 's/.*= "\(.*\)"/\1/p')
+      fi
+    else
+      if command -v gdbus &> /dev/null; then
+        wname=$(gdbus call --session --dest org.gnome.Shell \
+          --object-path /org/gnome/Shell \
+          --method org.gnome.Shell.Eval \
+          'global.display.focus_window ? global.display.focus_window.get_title() : ""' \
+          2>/dev/null | sed -n "s/^(true, '\(.*\)')$/\1/p")
+      fi
     fi
   fi
   echo "$wname"
@@ -390,7 +427,21 @@ auto_edit_text() {
 # Auto-detects X11 vs Wayland and uses the appropriate method
 wait_for_key_release() {
   python3 << 'PYEOF'
-import os, time
+import os, sys, time
+
+if sys.platform == 'darwin':
+    # macOS: use Quartz CGEventSource to detect key state
+    from Quartz import CGEventSourceKeyState, kCGEventSourceStateHIDSystemState
+    time.sleep(0.05)
+    # Find which keys are currently pressed (scan common key range 0-127)
+    pressed = [k for k in range(128) if CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, k)]
+    if not pressed:
+        exit(0)
+    while True:
+        time.sleep(0.05)
+        if not any(CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, k) for k in pressed):
+            break
+    exit(0)
 
 session = os.environ.get('XDG_SESSION_TYPE', 'x11')
 
@@ -511,20 +562,24 @@ trap cleanup EXIT INT TERM
 # Show recording overlay immediately
 show_status recording
 
-# Small delay to let GNOME finish processing the shortcut key
+# Small delay to let the DE finish processing the shortcut key
 sleep 0.15
 
 # Start recording in background
 rm -f "$RECORDING"
-pw-record --channels=1 --rate=16000 "$RECORDING" &
-PW_PID=$!
+if [ "$OS" = "Darwin" ]; then
+  rec -q -c 1 -r 16000 -b 16 "$RECORDING" &
+else
+  pw-record --channels=1 --rate=16000 "$RECORDING" &
+fi
+REC_PID=$!
 
 # Wait for key release
 wait_for_key_release
 
 # Stop recording
-kill $PW_PID 2>/dev/null
-wait $PW_PID 2>/dev/null
+kill $REC_PID 2>/dev/null
+wait $REC_PID 2>/dev/null
 sleep 0.2
 
 # Save clipboard for paste phase
@@ -532,7 +587,11 @@ SAVED_CLIPBOARD=$($CLIP_PASTE 2>/dev/null)
 
 # Log recording info
 RECORDING_DURATION=$(get_duration "$RECORDING")
-RECORDING_SIZE=$(stat -c%s "$RECORDING" 2>/dev/null || echo "0")
+if [ "$OS" = "Darwin" ]; then
+  RECORDING_SIZE=$(stat -f%z "$RECORDING" 2>/dev/null || echo "0")
+else
+  RECORDING_SIZE=$(stat -c%s "$RECORDING" 2>/dev/null || echo "0")
+fi
 echo "=== Recording ===" >> "$LOGFILE"
 echo "Duration: ${RECORDING_DURATION}s, Size: ${RECORDING_SIZE} bytes" >> "$LOGFILE"
 
