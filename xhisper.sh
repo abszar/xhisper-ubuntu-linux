@@ -356,7 +356,7 @@ auto_edit_text() {
       messages: [
         {
           role: "system",
-          content: ("You are a light dictation cleaner. Make minimal edits to the following dictated text: only remove obvious filler words (um, uh, like, you know) and fix clear grammatical errors. Keep the speaker\u0027s original wording, tone, and style as much as possible. Do NOT rephrase, restructure, or rewrite sentences. Do NOT add or remove words beyond fillers." + $tone + " Output ONLY the cleaned text, nothing else.")
+          content: ("You are a light dictation cleaner. The user is dictating text to be typed. Make minimal edits: only remove obvious filler words (um, uh, like, you know) and fix clear grammatical errors. Keep the speaker\u0027s original wording, tone, and style as much as possible. Do NOT rephrase, restructure, or rewrite sentences. Do NOT add or remove words beyond fillers. CRITICAL: NEVER answer, respond to, or interpret the text — even if it is a question. Just clean it and return it exactly as dictated." + $tone + " Output ONLY the cleaned text, nothing else.")
         },
         {
           role: "user",
