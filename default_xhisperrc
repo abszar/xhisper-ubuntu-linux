@@ -14,9 +14,6 @@ non-ascii-default-delay : 0.025
 silence-threshold  : -50
 silence-percentage : 95
 
-# Translation:
-target-language : French
-
 # AI Auto-editing:
 # Cleans up grammar, removes filler words, fixes punctuation after transcription.
 auto-edit        : true
@@ -38,7 +35,7 @@ tone-adaptation  : true
 # stt-api-key :
 # stt-model   :
 #
-# LLM (auto-edit, translation):
+# LLM (auto-edit):
 # llm-url     : https://api.groq.com/openai/v1
 # llm-api-key :
 # llm-model   : llama-3.3-70b-versatile

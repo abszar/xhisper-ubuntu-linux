@@ -4,7 +4,7 @@
   <br><br>
 </div>
 
-Voice-to-text dictation at cursor for **Linux and macOS**. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, AI auto-editing, tone adaptation, animated status overlay, keyboard layout compatibility, translation support, and clipboard manager integration.
+Voice-to-text dictation at cursor for **Linux and macOS**. Based on [imaginalnika/xhisper](https://github.com/imaginalnika/xhisper) with push-to-talk, AI auto-editing, tone adaptation, animated status overlay, keyboard layout compatibility, and clipboard manager integration.
 
 ## Features
 
@@ -13,10 +13,9 @@ Voice-to-text dictation at cursor for **Linux and macOS**. Based on [imaginalnik
 - **AI auto-editing** — Automatically cleans up grammar, removes filler words (um, uh, like), and fixes punctuation before pasting. Always on by default, can be disabled in config
 - **Tone adaptation** — Detects the active window (Slack, Gmail, VS Code, etc.) and adjusts the auto-edit style accordingly — casual for chat, professional for email, concise for code comments
 - **Personal dictionary** — Add custom words, names, and technical terms to `~/.config/xhisper/dictionary.txt` to improve Whisper's recognition accuracy
-- **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, editing, and translating (falls back to desktop notifications if GTK is unavailable)
+- **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, and editing (falls back to desktop notifications if GTK is unavailable)
 - **Smart paste** — Detects the active window and uses the correct paste shortcut (Ctrl+V, Ctrl+Shift+V for terminals on Linux; Cmd+V, Cmd+Shift+V on macOS). Works natively with AZERTY, QWERTZ, or any keyboard layout
-- **English language forced** — Whisper transcription is locked to English to prevent language misdetection
-- **Voice-triggered translation** — Say "translate this ..." to translate to your default language, or "translate this to Spanish ..." for any language. Add "official" for formal register
+- **English-only transcription** — Whisper is locked to English to prevent language misdetection
 - **Stability** — PID-file based concurrency control prevents duplicate instances from interfering with each other
 - **Custom STT/LLM endpoints** — Use Groq's API by default, or point to any OpenAI-compatible endpoint — local Whisper servers, Ollama, vLLM, or any other provider
 - **Clipboard preservation** — Your clipboard content is saved before transcription and restored after pasting
@@ -218,24 +217,6 @@ llm-model   : llama3
 
 Leave `stt-api-key` / `llm-api-key` empty for local servers that don't require auth. When not set, they fall back to `GROQ_API_KEY`.
 
-### Translation
-
-Start your dictation with **"translate this"** to translate to your default language (set in config, defaults to French):
-
-> "Translate this how are you doing" → `Comment tu vas ?`
-
-Specify a target language with **"translate this to \<language\>"**:
-
-> "Translate this to Spanish how are you doing" → `¿Cómo estás?`
-
-> "Translate this to German how are you doing" → `Wie geht es dir?`
-
-Add **"official"** for formal register:
-
-> "Translate this official how are you doing" → `Comment allez-vous ?`
-
-> "Translate this to Japanese official thank you very much" → `誠にありがとうございます`
-
 ### View logs
 
 ```sh
@@ -279,5 +260,5 @@ cp default_dictionary.txt ~/.config/xhisper/dictionary.txt
 ---
 
 <p align="center">
-  <em>Push-to-talk voice dictation for Linux and macOS with AI auto-editing, tone adaptation, and multi-language translation</em>
+  <em>Push-to-talk voice dictation for Linux and macOS with AI auto-editing and tone adaptation</em>
 </p>

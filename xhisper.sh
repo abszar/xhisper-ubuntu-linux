@@ -89,7 +89,6 @@ silence_threshold=-50
 silence_percentage=95
 non_ascii_initial_delay=0.1
 non_ascii_default_delay=0.025
-target_language="French"
 auto_edit="true"
 tone_adaptation="true"
 stt_url="https://api.groq.com/openai/v1"
@@ -116,7 +115,6 @@ if [ -f "$CONFIG_FILE" ]; then
       silence-percentage) silence_percentage="$value" ;;
       non-ascii-initial-delay) non_ascii_initial_delay="$value" ;;
       non-ascii-default-delay) non_ascii_default_delay="$value" ;;
-      target-language) target_language="$value" ;;
       auto-edit) auto_edit="$value" ;;
       tone-adaptation) tone_adaptation="$value" ;;
       stt-url) stt_url="$value" ;;
@@ -227,7 +225,6 @@ show_status() {
     case "$1" in
       recording)    osascript -e 'display notification "Recording..." with title "xhisper"' ;;
       transcribing) osascript -e 'display notification "Transcribing..." with title "xhisper"' ;;
-      translating)  osascript -e 'display notification "Translating..." with title "xhisper"' ;;
       editing)      osascript -e 'display notification "Editing..." with title "xhisper"' ;;
       done)         osascript -e 'display notification "Done" with title "xhisper"' ;;
       silent)       osascript -e 'display notification "No sound detected" with title "xhisper"' ;;
@@ -236,7 +233,6 @@ show_status() {
     case "$1" in
       recording)    notify-send -a xhisper "xhisper" "Recording..." -t 30000 ;;
       transcribing) notify-send -a xhisper "xhisper" "Transcribing..." -t 30000 ;;
-      translating)  notify-send -a xhisper "xhisper" "Translating..." -t 30000 ;;
       editing)      notify-send -a xhisper "xhisper" "Editing..." -t 30000 ;;
       done)         notify-send -a xhisper "xhisper" "Done" -t 1000 ;;
       silent)       notify-send -a xhisper "xhisper" "No sound detected" -t 2000 ;;
@@ -304,44 +300,6 @@ transcribe() {
 
   logging_end_and_write_to_logfile "Transcription" "$transcription" "$logging_start"
   echo "$transcription"
-}
-
-translate_text() {
-  local raw_text="$1"
-  local formality="$2"
-  local lang="$3"
-  local logging_start=$(date +%s%N)
-
-  local style_instruction
-  if [ "$formality" = "formal" ]; then
-    style_instruction="Use formal/polite register."
-  else
-    style_instruction="Use casual/informal register."
-  fi
-
-  local curl_args=(-s -X POST "${llm_url}/chat/completions"
-    -H "Content-Type: application/json")
-  [ -n "$llm_api_key" ] && curl_args+=(-H "Authorization: Bearer $llm_api_key")
-
-  local translated=$(curl "${curl_args[@]}" \
-    -d "$(jq -n --arg text "$raw_text" --arg style "$style_instruction" --arg lang "$lang" --arg model "$llm_model" '{
-      model: $model,
-      messages: [
-        {
-          role: "system",
-          content: ("You are a translator. Translate the following text to " + $lang + ". " + $style + " Output ONLY the translated text, nothing else. Do not add quotes around the output.")
-        },
-        {
-          role: "user",
-          content: $text
-        }
-      ],
-      temperature: 0.3
-    }')" \
-    | jq -r '.choices[0].message.content')
-
-  logging_end_and_write_to_logfile "Translation" "$translated" "$logging_start"
-  echo "$translated"
 }
 
 get_active_window() {
@@ -605,33 +563,12 @@ fi
 
 show_status transcribing
 TRANSCRIPTION=$(transcribe "$RECORDING")
-WAS_TRANSLATED=0
-# Check if transcription starts with "translate this"
-if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
-  TARGET_LANG="$target_language"
-  FORMALITY="casual"
-  # Strip "translate this" prefix
-  TEXT_TO_TRANSLATE=$(echo "$TRANSCRIPTION" | sed -E 's/^[Tt]ranslate this[,.]? *//i')
-  # Check for "to <language>" and extract it
-  if echo "$TEXT_TO_TRANSLATE" | grep -iqE "^to [a-z]+"; then
-    TARGET_LANG=$(echo "$TEXT_TO_TRANSLATE" | sed -E 's/^[Tt]o ([A-Za-z]+).*/\1/')
-    TEXT_TO_TRANSLATE=$(echo "$TEXT_TO_TRANSLATE" | sed -E 's/^[Tt]o [A-Za-z]+[,.]? *//i')
-  fi
-  # Check for "official" (formal register)
-  if echo "$TEXT_TO_TRANSLATE" | grep -iq "^official"; then
-    FORMALITY="formal"
-    TEXT_TO_TRANSLATE=$(echo "$TEXT_TO_TRANSLATE" | sed -E 's/^[Oo]fficial[,.]? *//i')
-  fi
-  show_status translating
-  TRANSCRIPTION=$(translate_text "$TEXT_TO_TRANSLATE" "$FORMALITY" "$TARGET_LANG")
-  WAS_TRANSLATED=1
-fi
 
 # Detect active window (used for tone adaptation and paste method)
 ACTIVE_WINDOW=$(get_active_window)
 
-# AI auto-editing (skip for translations — they're already clean)
-if [ "$auto_edit" = "true" ] && [ "$WAS_TRANSLATED" -eq 0 ] && [ -n "$TRANSCRIPTION" ]; then
+# AI auto-editing
+if [ "$auto_edit" = "true" ] && [ -n "$TRANSCRIPTION" ]; then
   TONE=""
   if [ "$tone_adaptation" = "true" ]; then
     TONE=$(get_tone_for_window "$ACTIVE_WINDOW")
