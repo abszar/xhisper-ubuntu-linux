@@ -28,6 +28,7 @@
 void cleanup(void);
 void emit(int type, int code, int val);
 void do_paste(void);
+void do_shift_paste(void);
 void type_char(unsigned char c);
 void do_backspace(void);
 void do_key(int keycode);
@@ -146,6 +147,26 @@ void do_paste() {
     emit(EV_SYN, SYN_REPORT, 0);
     usleep(8000);
     emit(EV_KEY, KEY_V, 0);
+    emit(EV_SYN, SYN_REPORT, 0);
+    usleep(2000);
+    emit(EV_KEY, KEY_LEFTCTRL, 0);
+    emit(EV_SYN, SYN_REPORT, 0);
+}
+
+void do_shift_paste() {
+    emit(EV_KEY, KEY_LEFTCTRL, 1);
+    emit(EV_SYN, SYN_REPORT, 0);
+    usleep(2000);
+    emit(EV_KEY, KEY_LEFTSHIFT, 1);
+    emit(EV_SYN, SYN_REPORT, 0);
+    usleep(8000);
+    emit(EV_KEY, KEY_V, 1);
+    emit(EV_SYN, SYN_REPORT, 0);
+    usleep(8000);
+    emit(EV_KEY, KEY_V, 0);
+    emit(EV_SYN, SYN_REPORT, 0);
+    usleep(2000);
+    emit(EV_KEY, KEY_LEFTSHIFT, 0);
     emit(EV_SYN, SYN_REPORT, 0);
     usleep(2000);
     emit(EV_KEY, KEY_LEFTCTRL, 0);
@@ -304,6 +325,8 @@ int run_daemon() {
             char cmd = buf[0];
             if (cmd == 'p') {
                 do_paste();
+            } else if (cmd == 'P') {
+                do_shift_paste();
             } else if (cmd == 't' && n == 2) {
                 type_char((unsigned char)buf[1]);
             } else if (cmd == 'b') {
@@ -334,6 +357,7 @@ void show_usage() {
     fprintf(stderr,
         "Usage:\n"
         "  xhispertool paste            - Paste from clipboard (Ctrl+V)\n"
+        "  xhispertool shift-paste      - Paste from clipboard (Ctrl+Shift+V)\n"
         "  xhispertool type <char>      - Type a single ASCII character\n"
         "  xhispertool backspace        - Press backspace\n"
         "\n"
@@ -392,6 +416,9 @@ int run_client(int argc, char *argv[]) {
 
     if (strcmp(argv[1], "paste") == 0) {
         buf[0] = 'p';
+        len = 1;
+    } else if (strcmp(argv[1], "shift-paste") == 0) {
+        buf[0] = 'P';
         len = 1;
     } else if (strcmp(argv[1], "backspace") == 0) {
         buf[0] = 'b';

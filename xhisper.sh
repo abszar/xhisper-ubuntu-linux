@@ -169,12 +169,25 @@ press_wrap_key() {
   fi
 }
 
+is_terminal_window() {
+  local wname_lower=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+  case "$wname_lower" in
+    *terminal*|*konsole*|*alacritty*|*kitty*|*wezterm*|*foot*|*xterm*|*tilix*|*terminator*|*yakuake*|*urxvt*|*rxvt*|*st-*|*tmux*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 paste() {
   local text="$1"
+  local wname="$2"
   press_wrap_key
   echo -n "$text" | $CLIP_COPY
   sleep 0.05
-  "$XHISPERTOOL" paste
+  if is_terminal_window "$wname"; then
+    "$XHISPERTOOL" shift-paste
+  else
+    "$XHISPERTOOL" paste
+  fi
   sleep 0.05
   if command -v copyq &> /dev/null; then
     copyq remove 0 &>/dev/null &
@@ -304,6 +317,8 @@ get_active_window() {
   if [ "$session" != "wayland" ]; then
     if command -v xdotool &> /dev/null; then
       wname=$(xdotool getactivewindow getwindowname 2>/dev/null)
+    elif command -v xprop &> /dev/null; then
+      wname=$(xprop -id "$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}')" WM_NAME 2>/dev/null | sed -n 's/.*= "\(.*\)"/\1/p')
     fi
   else
     if command -v gdbus &> /dev/null; then
@@ -553,11 +568,13 @@ if echo "$TRANSCRIPTION" | grep -iq "^translate this"; then
   WAS_TRANSLATED=1
 fi
 
+# Detect active window (used for tone adaptation and paste method)
+ACTIVE_WINDOW=$(get_active_window)
+
 # AI auto-editing (skip for translations — they're already clean)
 if [ "$auto_edit" = "true" ] && [ "$WAS_TRANSLATED" -eq 0 ] && [ -n "$TRANSCRIPTION" ]; then
   TONE=""
   if [ "$tone_adaptation" = "true" ]; then
-    ACTIVE_WINDOW=$(get_active_window)
     TONE=$(get_tone_for_window "$ACTIVE_WINDOW")
     echo "=== Tone ===" >> "$LOGFILE"
     echo "Window: [$ACTIVE_WINDOW] → Tone: [$TONE]" >> "$LOGFILE"
@@ -566,7 +583,7 @@ if [ "$auto_edit" = "true" ] && [ "$WAS_TRANSLATED" -eq 0 ] && [ -n "$TRANSCRIPT
   TRANSCRIPTION=$(auto_edit_text "$TRANSCRIPTION" "$TONE")
 fi
 
-paste "$TRANSCRIPTION"
+paste "$TRANSCRIPTION" "$ACTIVE_WINDOW"
 
 # Show done overlay briefly
 show_status done --timeout 1500
