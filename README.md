@@ -15,7 +15,7 @@ Voice-to-text dictation at cursor for **Linux and macOS**. Based on [imaginalnik
 - **Personal dictionary** — Add custom words, names, and technical terms to `~/.config/xhisper/dictionary.txt` to improve Whisper's recognition accuracy
 - **Animated status overlay** — A dark pill with animated sound wave bars slides up from the bottom of the screen during recording, transcribing, and editing (falls back to desktop notifications if GTK is unavailable)
 - **Smart paste** — Detects the active window and uses the correct paste shortcut (Ctrl+V, Ctrl+Shift+V for terminals on Linux; Cmd+V, Cmd+Shift+V on macOS). Works natively with AZERTY, QWERTZ, or any keyboard layout
-- **English-only transcription** — Whisper is locked to English to prevent language misdetection
+- **Multi-language transcription** — Whisper auto-detects the spoken language by default, so you can switch between English, French, Spanish, etc. and each is transcribed in its own script. Set `language : en` (or any ISO 639-1 code) in the config to force a specific language
 - **Stability** — PID-file based concurrency control prevents duplicate instances from interfering with each other
 - **Custom STT/LLM endpoints** — Use Groq's API by default, or point to any OpenAI-compatible endpoint — local Whisper servers, Ollama, vLLM, or any other provider
 - **Clipboard preservation** — Your clipboard content is saved before transcription and restored after pasting
